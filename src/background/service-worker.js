@@ -133,7 +133,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       respond(sendResponse, (async () => ({ ok: true, runs: await XA.db.listRuns(msg.filters || {}) }))());
       return true;
     case M.DELETE_RUN:
-      respond(sendResponse, XA.db.deleteRun(msg.runId).then(() => ({ ok: true })));
+      respond(sendResponse, XA.runService.deleteRun(msg));
       return true;
     case M.IMPORT_ARCHIVE:
       respond(sendResponse, handleImport(msg));

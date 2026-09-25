@@ -108,6 +108,28 @@
     return a;
   }
 
+  function postsSemanticallyEqual(a, b) {
+    if (a === b) return true;
+    if (a == null || b == null) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    if (Array.isArray(a)) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (!postsSemanticallyEqual(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    const keysA = Object.keys(a).filter((k) => k !== 'updated_at');
+    const keysB = Object.keys(b).filter((k) => k !== 'updated_at');
+    if (keysA.length !== keysB.length) return false;
+    for (const k of keysA) {
+      if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+      if (!postsSemanticallyEqual(a[k], b[k])) return false;
+    }
+    return true;
+  }
+
   function mergeQuote(a, b) {
     if (!b) return a || null;
     if (!a) return b;
@@ -177,9 +199,10 @@
 
     out.capture_context = a.capture_context === 'timeline' ? 'timeline' : (b.capture_context || a.capture_context);
     out.captured_at = a.captured_at || b.captured_at;
-    out.updated_at = u().nowIso();
     out.id = a.id || b.id;
     out.schema_version = POST_SCHEMA_VERSION;
+    if (postsSemanticallyEqual(out, a)) return a;
+    out.updated_at = u().nowIso();
     return out;
   }
 
@@ -197,6 +220,7 @@
   }
 
   XA.postModel = {
-    POST_SCHEMA_VERSION, emptyPost, canonicalPostId, normalizePost, mergePosts, legacyPostsFromImport
+    POST_SCHEMA_VERSION, emptyPost, canonicalPostId, normalizePost, mergePosts,
+    postsSemanticallyEqual, legacyPostsFromImport
   };
 })();

@@ -28,6 +28,7 @@
       this.restUntil = null;
       this.snapshotCount = 0;
       this.persistedCount = 0;
+      this.lastAdded = 0;
       this.pendingRun = null;
       this.overlay = null;
       this.countTick = 0;
@@ -149,6 +150,8 @@
       this.activeSegmentStart = this.now();
       this.activeElapsedMs = run.runtime && run.runtime.activeElapsedMs ? run.runtime.activeElapsedMs : 0;
       this.persistedCount = run.stats && run.stats.posts ? run.stats.posts : 0;
+      this.snapshotCount = this.persistedCount;
+      this.lastAdded = 0;
       this.lastScrollHeight = this.scrollHeight();
       this.stallMs = 0;
       this.recoveryAttempts = 0;
@@ -213,6 +216,7 @@
       this.prevTail = extraction.tail || this.prevTail;
 
       const batch = this.absorbBatch(extraction.posts);
+      this.lastAdded = 0;
       if (batch.length) {
         const ok = await this.flushBatch();
         if (!ok) return;
@@ -230,7 +234,7 @@
 
       this.maybeSnapshot();
 
-      const newCount = batch.length;
+      const newCount = this.lastAdded;
       this.postsSinceRest += newCount;
       const height = this.scrollHeight();
       const progressed = newCount > 0 || height !== this.lastScrollHeight;
@@ -323,6 +327,7 @@
         });
         if (!resp || resp.ok === false) throw new Error((resp && resp.error) || 'upsert rejected');
         if (resp.count != null) this.persistedCount = resp.count;
+        this.lastAdded = resp.added != null ? resp.added : 0;
         return true;
       } catch (e) {
         this.pendingPosts.unshift(...posts);
@@ -348,7 +353,7 @@
     maybeSnapshot() {
       const every = this.settings.snapshotEveryPosts;
       if (!every) return;
-      const count = this.collected.size;
+      const count = Math.max(this.persistedCount, this.collected.size);
       if (count - this.snapshotCount >= every) {
         this.snapshotCount = count;
         const formats = this.settings.exportFormats || ['json'];

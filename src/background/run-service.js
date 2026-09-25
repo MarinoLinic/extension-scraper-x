@@ -28,6 +28,17 @@
     });
   }
 
+  function tabAlive(tabId) {
+    return new Promise((resolve) => {
+      if (tabId == null) { resolve(false); return; }
+      try {
+        chrome.tabs.get(tabId, (tab) => {
+          resolve(!chrome.runtime.lastError && !!tab);
+        });
+      } catch (_) { resolve(false); }
+    });
+  }
+
   async function setBadge(tabId, run, runtime) {
     try {
       if (!chrome.action) return;
@@ -64,12 +75,17 @@
       return { ok: false, error: (source && source.reason) || 'Unsupported page' };
     }
     const existing = await XA.db.findUnfinishedRun(source.key);
-    if (existing && existing.tabId === tabId) {
-      return { ok: false, error: 'A run for this source is already active on this tab', runId: existing.id };
+    if (existing) {
+      return {
+        ok: false,
+        error: 'An unfinished run already exists for this source',
+        runId: existing.id,
+        code: 'existing-run'
+      };
     }
-    const { settings: validated, errors } = XA.settings.validateSettings(settings || {});
-    if (!validated) return { ok: false, error: 'Invalid settings' };
-    const merged = Object.assign({}, XA.defaults.DEFAULT_SETTINGS, settings || {});
+    const { settings: validated, errors, valid } = XA.settings.validateSettings(settings || {});
+    if (!valid) return { ok: false, error: 'Invalid settings', errors };
+    const merged = validated;
     const now = XA.util.nowIso();
     const run = {
       id: XA.util.uid('run'),
@@ -81,7 +97,7 @@
       stopReason: null,
       settings: merged,
       stats: { posts: 0, seq: 0, batches: 0 },
-      warnings: errors ? Object.values(errors) : [],
+      warnings: [],
       runtime: { activeElapsedMs: 0 },
       tabId
     };
@@ -115,6 +131,11 @@
       return { ok: false, error: 'run is already finished' };
     }
     const tabId = msg.tabId != null ? msg.tabId : run.tabId;
+    if (run.tabId != null && tabId !== run.tabId) {
+      await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'pause' }).catch(() => {});
+      await XA.db.patchRun(run.id, { tabId });
+      if (tabRunMap.get(run.tabId) === run.id) tabRunMap.delete(run.tabId);
+    }
     try {
       await sendToTab(tabId, {
         type: M().XAR_CONTROL, action: 'resume', run, settings: run.settings
@@ -134,26 +155,57 @@
     if (XA.messages.UNFINISHED_STATES.includes(run.state) && run.tabId != null) {
       await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'stop', reason: 'manual' }).catch(() => {});
     }
-    const shouldAutoExport = !!(run.settings && run.settings.autoExportOnComplete && !run.autoExported);
+    let claimed = false;
     const patched = await XA.db.patchRun(run.id, (r) => {
       r.state = 'completed';
       r.stopReason = r.stopReason || 'manual';
       r.completedAt = XA.util.nowIso();
-      if (shouldAutoExport) r.autoExported = true;
+      if (r.settings && r.settings.autoExportOnComplete && !r.autoExported) {
+        r.autoExported = true;
+        claimed = true;
+      }
       return r;
     });
     await setBadge(run.tabId, patched);
-    if (shouldAutoExport && patched) {
-      XA.exportService.exportRun(run.id, patched.settings.exportFormats, {
+    if (claimed && patched) {
+      await XA.exportService.exportRun(run.id, patched.settings.exportFormats, {
         media: patched.settings.autoMediaZip
       }).catch(() => {});
     }
     return { ok: true };
   }
 
+  async function deleteRun(msg) {
+    const run = await XA.db.getRun(msg.runId);
+    if (!run) return { ok: true };
+    if (XA.messages.UNFINISHED_STATES.includes(run.state) && run.tabId != null) {
+      await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'stop', reason: 'deleted' }).catch(() => {});
+    }
+    await XA.db.deleteRun(run.id);
+    if (run.tabId != null) {
+      if (tabRunMap.get(run.tabId) === run.id) tabRunMap.delete(run.tabId);
+      await clearBadge(run.tabId);
+    }
+    return { ok: true };
+  }
+
+  function senderTabId(sender) {
+    return sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+  }
+
+  function staleForRun(run, sender) {
+    const sid = senderTabId(sender);
+    return run && run.tabId != null && sid != null && run.tabId !== sid;
+  }
+
   async function handleUpsert(msg, sender) {
     const runId = msg.runId;
     if (!runId) return { ok: false, error: 'missing runId' };
+    const runBefore = await XA.db.getRun(runId);
+    if (!runBefore) return { ok: false, error: 'run not found' };
+    if (staleForRun(runBefore, sender)) {
+      return { ok: false, error: 'stale tab — this run is owned by another tab' };
+    }
     const result = await XA.db.upsertPosts(runId, msg.posts || []);
     const run = await XA.db.patchRun(runId, (r) => {
       r.stats.batches = (r.stats.batches || 0) + 1;
@@ -166,34 +218,43 @@
       if (incoming && !staleRunning && !resurrecting) r.state = incoming;
       return r;
     });
-    const tabId = (sender && sender.tab && sender.tab.id) || (run && run.tabId);
+    const tabId = senderTabId(sender) || (run && run.tabId);
     if (tabId != null) {
       await setBadge(tabId, run, msg.runtime);
     }
-    return { ok: true, count: result.count, changed: result.changed };
+    return { ok: true, count: result.count, changed: result.changed, added: result.added };
   }
 
   async function handleState(msg, sender) {
     const runId = msg.runId;
     if (!runId) return { ok: false };
+    const runBefore = await XA.db.getRun(runId);
+    if (!runBefore) return { ok: false, error: 'run not found' };
+    if (staleForRun(runBefore, sender)) {
+      return { ok: false, error: 'stale tab — this run is owned by another tab' };
+    }
+    let claimed = false;
     const run = await XA.db.patchRun(runId, (r) => {
       r.state = msg.state || r.state;
       if (msg.stopReason) r.stopReason = msg.stopReason;
       if (['completed', 'limited', 'error'].includes(msg.state)) r.completedAt = XA.util.nowIso();
       r.runtime = Object.assign({}, r.runtime, msg.runtime || {});
+      if (['completed', 'limited'].includes(r.state) &&
+          r.settings && r.settings.autoExportOnComplete && !r.autoExported) {
+        r.autoExported = true;
+        claimed = true;
+      }
       return r;
     });
-    const tabId = (sender && sender.tab && sender.tab.id) || (run && run.tabId);
+    const tabId = senderTabId(sender) || (run && run.tabId);
     if (tabId != null) {
       if (run && ['completed', 'limited', 'error'].includes(run.state)) {
         tabRunMap.delete(tabId);
       }
       await setBadge(tabId, run, msg.runtime);
     }
-    if (run && ['completed', 'limited'].includes(run.state) &&
-        run.settings && run.settings.autoExportOnComplete && !run.autoExported) {
-      await XA.db.patchRun(runId, { autoExported: true });
-      XA.exportService.exportRun(runId, run.settings.exportFormats, {
+    if (claimed && run) {
+      await XA.exportService.exportRun(runId, run.settings.exportFormats, {
         media: run.settings.autoMediaZip
       }).catch(() => {});
     }
@@ -223,14 +284,24 @@
     const source = msg.source;
     if (!source || !source.supported) return { ok: true };
     const run = await XA.db.findUnfinishedRun(source.key);
-    const tabId = sender && sender.tab && sender.tab.id;
-    if (run && tabId != null && run.state !== 'error') {
+    const tabId = senderTabId(sender);
+    if (!run || tabId == null || run.state === 'error') return { ok: true };
+    const resumable = ['paused', 'running', 'resting'].includes(run.state);
+    if (!resumable) return { ok: true };
+    if (run.tabId === tabId) {
       tabRunMap.set(tabId, run.id);
-      if (run.state === 'paused' || run.state === 'running' || run.state === 'resting') {
-        return { ok: true, resumeRun: run, resumeSettings: run.settings };
-      }
+      return { ok: true, resumeRun: run, resumeSettings: run.settings };
     }
-    return { ok: true };
+    if (await tabAlive(run.tabId)) {
+      return { ok: true, ownedElsewhere: true, runId: run.id };
+    }
+    const adopted = await XA.db.patchRun(run.id, (r) => {
+      if (r.tabId === run.tabId) r.tabId = tabId;
+      return r;
+    });
+    if (!adopted || adopted.tabId !== tabId) return { ok: true, ownedElsewhere: true, runId: run.id };
+    tabRunMap.set(tabId, run.id);
+    return { ok: true, resumeRun: adopted, resumeSettings: adopted.settings };
   }
 
   function tabRemoved(tabId) {
@@ -238,8 +309,8 @@
   }
 
   XA.runService = {
-    BADGE_COLORS, setBadge, clearBadge, sendToTab,
-    startRun, pauseRun, resumeRun, stopRun,
+    BADGE_COLORS, setBadge, clearBadge, sendToTab, tabAlive,
+    startRun, pauseRun, resumeRun, stopRun, deleteRun,
     handleUpsert, handleState, contextForTab, contentReady, tabRemoved
   };
 })();

@@ -130,6 +130,7 @@
     const runStore = tx.objectStore('runs');
     const run = await reqAsPromise(runStore.get(runId));
     let seq = run && run.stats && run.stats.seq ? run.stats.seq : 0;
+    let added = 0;
     let changed = 0;
     for (const incoming of posts || []) {
       if (!incoming || !incoming.id) continue;
@@ -138,8 +139,9 @@
       const merged = existing
         ? XA.postModel.mergePosts(existing, incoming)
         : XA.postModel.normalizePost(incoming, {});
+      if (existing && merged === existing) continue;
       if (existing && JSON.stringify(merged) === JSON.stringify(existing)) continue;
-      if (!existing) { merged.seq = ++seq; merged.runId = runId; }
+      if (!existing) { merged.seq = ++seq; merged.runId = runId; added++; }
       else { merged.seq = existing.seq; merged.runId = runId; }
       await reqAsPromise(postStore.put(merged));
       changed++;
@@ -152,7 +154,7 @@
     }
     await done;
     const count = await store('posts', 'readonly', (s) => reqAsPromise(s.index('by-run').count(runId)));
-    return { changed, count };
+    return { added, changed, count };
   }
 
   async function getPosts(runId) {

@@ -71,7 +71,12 @@
 
       try {
         const rendered = await this.waitForArticles(RENDER_WAIT_MS);
-        if (this.cancelled) return;
+        if (this.cancelled) {
+          diag.error = 'cancelled before render completed';
+          diag.cancelled = true;
+          await this.finish(diag);
+          return;
+        }
         if (!rendered) {
           diag.error = this.loginGateVisible()
             ? 'login-or-error surface shown — X did not render the conversation'
@@ -114,6 +119,7 @@
         diag.droppedThirdParty = this.accum.size - chain.length;
         diag.sawRequestedId = chain.some((p) => p.id === diag.statusId);
         diag.incompleteCounter = this.counterIncompleteness(chain);
+        if (this.cancelled) diag.cancelled = true;
         if (!diag.sawRequestedId) {
           diag.error = 'requested status ' + diag.statusId + ' not observed in rendered conversation';
           diag.warnings.push('The focused post may be deleted, protected, or buried under unloaded replies.');

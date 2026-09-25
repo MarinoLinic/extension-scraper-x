@@ -92,7 +92,7 @@ const FIELD_GROUPS = [
     title: 'Media downloads',
     fields: [
       { key: 'autoMediaZip', kind: 'check', label: 'Download a media ZIP after the final export',
-        desc: 'Off by default. Requests optional access to pbs.twimg.com the first time it runs.' },
+        desc: 'Off by default. Saving with this on asks for optional access to pbs.twimg.com; if denied it stays off.' },
       { key: 'media.postImages', kind: 'check', label: 'ZIP: post photos' },
       { key: 'media.quotedImages', kind: 'check', label: 'ZIP: quoted post photos' },
       { key: 'media.cardImages', kind: 'check', label: 'ZIP: link-card images' },
@@ -248,17 +248,30 @@ function showSettingsErrors(errors) {
 
 async function saveSettingsFromForm() {
   const collected = collectForm();
+  let mediaDenied = false;
+  if (collected.autoMediaZip) {
+    try {
+      const granted = await chrome.permissions.contains({ origins: ['https://pbs.twimg.com/*'] }) ||
+        await chrome.permissions.request({ origins: ['https://pbs.twimg.com/*'] });
+      if (!granted) { collected.autoMediaZip = false; mediaDenied = true; }
+    } catch (_) {
+      collected.autoMediaZip = false;
+      mediaDenied = true;
+    }
+  }
   const resp = await send({ type: M.SAVE_SETTINGS, settings: collected });
   if (resp && resp.ok) {
     currentSettings = resp.settings;
     showSettingsErrors(resp.errors || {});
     fillForm(resp.settings);
-    $('settings-status').textContent = 'Saved' +
+    $('settings-status').textContent = (mediaDenied
+      ? 'Saved — media permission denied, media ZIP stays off'
+      : 'Saved') +
       (resp.errors && Object.keys(resp.errors).length ? ' (see notes on fields)' : '');
   } else {
     $('settings-status').textContent = 'Save failed';
   }
-  setTimeout(() => { $('settings-status').textContent = ''; }, 4000);
+  setTimeout(() => { $('settings-status').textContent = ''; }, 5000);
 }
 
 async function loadSettingsIntoForm() {

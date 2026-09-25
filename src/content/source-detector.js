@@ -122,6 +122,14 @@
       });
     }
 
+    if (segs.length === 3 && handle && segs[1].toLowerCase() === 'lists' && segs[2]) {
+      return makeSource({
+        key: 'list:' + segs[2].toLowerCase(), type: 'list',
+        label: 'List ' + segs[2],
+        sourceUrl, supported: true, reason: null
+      });
+    }
+
     if (segs.length >= 3 && handle && segs[1].toLowerCase() === 'status') {
       const id = segs[2].replace(/\D.*$/, '');
       return makeSource({

@@ -5,9 +5,13 @@
 
   function safeUrl(url) {
     if (!url) return null;
-    const s = String(url);
-    if (/^(https?:|blob:|data:image\/)/i.test(s)) return s;
-    if (s.startsWith('media/')) return s;
+    const s = String(url).trim();
+    if (!s) return null;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^\/\//.test(s)) return 'https:' + s;
+    if (/^data:image\//i.test(s)) return s;
+    if (/^blob:/i.test(s)) return s;
+    if (/^media\/[^\s"'<>]+$/.test(s) && !s.split('/').includes('..')) return s;
     return null;
   }
 
@@ -36,10 +40,15 @@
 
   function imgTag(url, alt, mediaMap, offline) {
     const local = mediaUrl(url, mediaMap, offline);
-    if (!local) return '';
-    const remote = (offline && local !== url) ? ' data-remote="' + esc(url) + '"' : '';
-    return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
-      '<img src="' + esc(local) + '" alt="' + esc(alt || '') + '" loading="lazy"' + remote + '></a>';
+    const src = safeUrl(local);
+    if (!src) return '';
+    const href = safeUrl(url);
+    const remote = (offline && src !== url && href)
+      ? ' data-remote="' + esc(href) + '"' : '';
+    const img = '<img src="' + esc(src) + '" alt="' + esc(alt || '') + '" loading="lazy"' + remote + '>';
+    return href
+      ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + img + '</a>'
+      : img;
   }
 
   function renderMedia(post, mediaMap, offline) {
@@ -63,7 +72,7 @@
         n++;
         const link = safeUrl(v.permalink || v.url);
         const isBlob = /^blob:/i.test(String(v.url || ''));
-        if (v.poster && /^https?:/i.test(v.poster)) {
+        if (v.poster) {
           html += imgTag(v.poster, 'video poster', mediaMap, offline) + ' ';
         }
         html += link
@@ -72,9 +81,12 @@
       }
       for (const u of plainVidUrls) {
         n++;
+        const link2 = safeUrl(u);
         const isBlob = /^blob:/i.test(String(u));
-        html += '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">Clip ' + n +
-          (isBlob ? ' (temporary blob reference)' : '') + '</a> ';
+        html += link2
+          ? '<a href="' + esc(link2) + '" target="_blank" rel="noopener noreferrer">Clip ' + n +
+            (isBlob ? ' (temporary blob reference)' : '') + '</a> '
+          : '<span class="xa-muted">Clip ' + n + ' (no durable URL)</span> ';
       }
       html += '</div>';
     }
@@ -115,7 +127,10 @@
     if (post.is_reply && replyTargets) banners.push('<span class="xa-banner">Replying to ' + replyTargets + '</span>');
     if (post.is_thread) {
       const role = post.thread_role && post.thread_role !== 'standalone' ? post.thread_role : 'thread';
-      const root = post.thread_id ? ' · <a href="' + esc(post.thread_id) + '" target="_blank" rel="noopener noreferrer">root</a>' : '';
+      const rootUrl = safeUrl(post.thread_id);
+      const root = post.thread_id
+        ? (rootUrl ? ' · <a href="' + esc(rootUrl) + '" target="_blank" rel="noopener noreferrer">root</a>' : ' · root')
+        : '';
       banners.push('<span class="xa-banner xa-banner-thread">Thread: ' + esc(role) + root + '</span>');
     }
     if (post.thread_scraped) banners.push('<span class="xa-banner xa-banner-ok">Thread expanded</span>');
@@ -124,10 +139,11 @@
     }
 
     const card = post.link_card;
+    const cardUrl = card ? safeUrl(card.url) : null;
     const cardHtml = card && (card.url || card.title)
       ? '<div class="xa-linkcard">' +
-        (card.url ? '<a href="' + esc(safeUrl(card.url) || '#') + '" target="_blank" rel="noopener noreferrer">' +
-          esc(card.title || card.url) + '</a>' : esc(card.title || '')) +
+        (cardUrl ? '<a href="' + esc(cardUrl) + '" target="_blank" rel="noopener noreferrer">' +
+          esc(card.title || card.url) + '</a>' : esc(card.title || card.url || '')) +
         (card.image ? imgTag(card.image, 'link card image', mediaMap, offline) : '') +
         '</div>' : '';
 
@@ -141,8 +157,9 @@
 
     const avatar = post.avatar_url ? imgTag(post.avatar_url, 'avatar', mediaMap, offline) : '';
     const ts = post.date_displayed || post.timestamp_iso || '';
-    const tsLink = post.tweet_url
-      ? '<a class="xa-time" href="' + esc(post.tweet_url) + '" target="_blank" rel="noopener noreferrer">' + esc(ts) + '</a>'
+    const tweetUrl = safeUrl(post.tweet_url);
+    const tsLink = tweetUrl
+      ? '<a class="xa-time" href="' + esc(tweetUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(ts) + '</a>'
       : '<span class="xa-time">' + esc(ts) + '</span>';
     const searchText = [post.text, post.name, post.handle,
       post.quote_context && post.quote_context.quoted_text,

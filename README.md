@@ -167,7 +167,9 @@ traversal stripped, whitespace collapsed, missing tokens get deterministic fallb
 
 ### Media
 
-`autoMediaZip` (off) downloads a media ZIP after the final export. Content toggles:
+`autoMediaZip` (off) downloads a media ZIP after the final export. Turning it on in
+settings asks for `pbs.twimg.com` access at save time; if denied it stays off.
+Content toggles:
 post photos (on), quoted photos (on), link-card images (off), avatars (off).
 Videos are kept as references/posters — temporary `blob:` URLs are never presented as
 archived files. A manual **Media ZIP** button exists per archive regardless of the toggle.
@@ -286,7 +288,7 @@ status id, login surface) in the job list — nothing silently pretends to succe
 | `downloads` | named JSON/HTML/ZIP downloads |
 | `offscreen` | create Blob URLs and run long exports outside the short-lived service worker |
 | `x.com`, `twitter.com` (host) | content scripts that read the visible DOM |
-| `pbs.twimg.com` (**optional**) | only requested, via a user gesture, when you first download media |
+| `pbs.twimg.com` (**optional**) | only requested, via a user gesture, when you enable auto media ZIP or download media |
 
 There is **no** all-sites access, history, cookies, debugger, or web-request interception.
 No telemetry, analytics, servers, or remote code — the extension is fully inspectable and

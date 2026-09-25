@@ -16,6 +16,9 @@
   function jobId(runId, statusId) { return runId + ':' + statusId; }
 
   async function buildJobs(runId, candidateIds) {
+    const run = await XA.db.getRun(runId);
+    const runHandle = run && run.source && run.source.handle
+      ? String(run.source.handle).replace(/^@/, '') : null;
     const posts = await XA.db.getPosts(runId);
     const byStatus = new Map();
     for (const p of posts) {
@@ -44,7 +47,7 @@
         runId,
         statusId: sid,
         url: meta.url,
-        authorHandle: XA.util.authorOfStatusUrl(meta.url),
+        authorHandle: authorForUrl(meta.url, runHandle),
         reason: meta.reason,
         confidence: meta.confidence,
         state: 'queued',
@@ -64,6 +67,12 @@
 
   function rankConfidence(c) {
     return c === 'high' ? 3 : c === 'medium' ? 2 : c === 'low' ? 1 : 0;
+  }
+
+  function authorForUrl(url, fallback) {
+    const a = XA.util.authorOfStatusUrl(url);
+    if (!a || a.toLowerCase() === 'i') return fallback || a;
+    return a;
   }
 
   async function ensureWorkerTab(q, firstUrl) {
@@ -201,7 +210,8 @@
         const diag = result.diagnostics || {};
         const found = await persistResult(runId, result);
         const sawRequested = !!diag.sawRequestedId;
-        const state = !sawRequested && diag.error ? 'failed'
+        const state = diag.cancelled ? 'paused'
+          : !sawRequested && diag.error ? 'failed'
           : diag.incompleteCounter ? 'incomplete'
           : sawRequested ? 'done' : 'failed';
         await XA.db.patchThreadJob(job.id, {
@@ -268,5 +278,5 @@
     };
   }
 
-  XA.threadService = { startQueue, pauseQueue, statusFor, buildJobs, handleThreadResult };
+  XA.threadService = { startQueue, pauseQueue, statusFor, buildJobs, handleThreadResult, authorForUrl };
 })();
