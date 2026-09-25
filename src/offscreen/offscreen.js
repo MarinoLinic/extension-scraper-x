@@ -21,14 +21,15 @@ function makeFile(filename, content, mime) {
 }
 
 function exportFilename(msg, ext, extraSuffix) {
-  const base = XA.filename.expandTemplate(msg.template, {
+  return XA.filename.filenameFor({
+    template: msg.template,
     source: msg.run.source,
     run: msg.run,
     num: msg.postCount,
     ext,
+    suffix: extraSuffix,
     date: new Date()
   });
-  return base + (extraSuffix || '') + '.' + ext;
 }
 
 async function fetchOne(url, retries) {

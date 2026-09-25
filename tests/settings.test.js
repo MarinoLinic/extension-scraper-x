@@ -8,13 +8,20 @@ describe('settings validation', () => {
   it('matches the documented defaults contract', () => {
     expect(DEFAULT_SETTINGS.preset).toBe('balanced');
     expect(DEFAULT_SETTINGS.randomize).toBe(true);
-    expect(DEFAULT_SETTINGS.tickDelayMinMs).toBe(3000);
-    expect(DEFAULT_SETTINGS.tickDelayMaxMs).toBe(6000);
-    expect(DEFAULT_SETTINGS.scrollMinPx).toBe(650);
-    expect(DEFAULT_SETTINGS.scrollMaxPx).toBe(1150);
-    expect(DEFAULT_SETTINGS.restEveryPosts).toBe(80);
-    expect(DEFAULT_SETTINGS.restMinMs).toBe(20000);
-    expect(DEFAULT_SETTINGS.restMaxMs).toBe(28000);
+    expect(DEFAULT_SETTINGS.tickDelayMinMs).toBe(1400);
+    expect(DEFAULT_SETTINGS.tickDelayMaxMs).toBe(5200);
+    expect(DEFAULT_SETTINGS.scrollMinPx).toBe(320);
+    expect(DEFAULT_SETTINGS.scrollMaxPx).toBe(980);
+    expect(DEFAULT_SETTINGS.restEveryPosts).toBe(65);
+    expect(DEFAULT_SETTINGS.restCountJitterPercent).toBe(30);
+    expect(DEFAULT_SETTINGS.restMinMs).toBe(18000);
+    expect(DEFAULT_SETTINGS.restMaxMs).toBe(55000);
+    expect(DEFAULT_SETTINGS.readingPauseChancePercent).toBe(8);
+    expect(DEFAULT_SETTINGS.readingPauseMinMs).toBe(7000);
+    expect(DEFAULT_SETTINGS.readingPauseMaxMs).toBe(24000);
+    expect(DEFAULT_SETTINGS.backtrackChancePercent).toBe(4);
+    expect(DEFAULT_SETTINGS.smoothScroll).toBe(true);
+    expect(DEFAULT_SETTINGS.continueWhenHidden).toBe(false);
     expect(DEFAULT_SETTINGS.stallTimeoutMs).toBe(120000);
     expect(DEFAULT_SETTINGS.stallRecoveryAttempts).toBe(2);
     expect(DEFAULT_SETTINGS.maxActiveDurationMs).toBeNull();
@@ -76,6 +83,66 @@ describe('settings validation', () => {
   it('editing a preset field switches preset to custom', () => {
     const { settings } = validateSettings({ tickDelayMinMs: 4000 }, { preset: 'balanced' });
     expect(settings.preset).toBe('custom');
+    const { settings: jit } = validateSettings({ restCountJitterPercent: 10 }, { preset: 'balanced' });
+    expect(jit.preset).toBe('custom');
+  });
+
+  it('presets carry the exact documented pacing values', () => {
+    expect(PRESETS.balanced).toMatchObject({
+      tickDelayMinMs: 1400, tickDelayMaxMs: 5200,
+      scrollMinPx: 320, scrollMaxPx: 980,
+      restEveryPosts: 65, restCountJitterPercent: 30,
+      restMinMs: 18000, restMaxMs: 55000,
+      readingPauseChancePercent: 8, readingPauseMinMs: 7000, readingPauseMaxMs: 24000,
+      backtrackChancePercent: 4,
+      stallTimeoutMs: 120000, stallRecoveryAttempts: 2
+    });
+    expect(PRESETS.gentle).toMatchObject({
+      tickDelayMinMs: 2500, tickDelayMaxMs: 7500,
+      scrollMinPx: 240, scrollMaxPx: 760,
+      restEveryPosts: 45, restCountJitterPercent: 35,
+      restMinMs: 30000, restMaxMs: 90000,
+      readingPauseChancePercent: 12, readingPauseMinMs: 10000, readingPauseMaxMs: 35000,
+      backtrackChancePercent: 5,
+      stallTimeoutMs: 150000, stallRecoveryAttempts: 2
+    });
+    expect(PRESETS.fast).toMatchObject({
+      tickDelayMinMs: 800, tickDelayMaxMs: 2400,
+      scrollMinPx: 650, scrollMaxPx: 1250,
+      restEveryPosts: 110, restCountJitterPercent: 20,
+      restMinMs: 12000, restMaxMs: 30000,
+      readingPauseChancePercent: 3, readingPauseMinMs: 5000, readingPauseMaxMs: 12000,
+      backtrackChancePercent: 2,
+      stallTimeoutMs: 90000, stallRecoveryAttempts: 1
+    });
+  });
+
+  it('validates the new pacing ranges and swaps the reading-pause pair', () => {
+    const { settings, errors } = validateSettings({
+      restCountJitterPercent: 99,
+      readingPauseChancePercent: 80,
+      backtrackChancePercent: 40,
+      readingPauseMinMs: 500,
+      readingPauseMaxMs: 999999
+    });
+    expect(settings.restCountJitterPercent).toBe(75);
+    expect(settings.readingPauseChancePercent).toBe(50);
+    expect(settings.backtrackChancePercent).toBe(25);
+    expect(errors.restCountJitterPercent).toMatch(/clamp/i);
+    expect(errors.readingPauseChancePercent).toMatch(/clamp/i);
+    expect(errors.backtrackChancePercent).toMatch(/clamp/i);
+    expect(settings.readingPauseMinMs).toBe(1000);
+    expect(settings.readingPauseMaxMs).toBe(120000);
+    const swapped = validateSettings({ readingPauseMinMs: 9000, readingPauseMaxMs: 3000 });
+    expect(swapped.settings.readingPauseMinMs).toBe(3000);
+    expect(swapped.settings.readingPauseMaxMs).toBe(9000);
+    expect(swapped.errors.readingPauseMaxMs).toBeTruthy();
+  });
+
+  it('treats smoothScroll and continueWhenHidden as booleans', () => {
+    const { settings } = validateSettings({ smoothScroll: '', continueWhenHidden: 1 });
+    expect(settings.smoothScroll).toBe(false);
+    expect(settings.continueWhenHidden).toBe(true);
   });
 
   it('applying a preset overrides its fields', () => {

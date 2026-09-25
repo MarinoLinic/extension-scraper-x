@@ -109,6 +109,20 @@ describe('URL protocol allowlisting', () => {
     expect(html).not.toContain('data:text/html');
     expect(html).toContain('no durable URL');
   });
+
+  it('uses the normalized allowlisted value in quote hrefs', () => {
+    const p = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/9',
+      quote_context: {
+        quoted_tweet_url: '//x.com/b/status/55',
+        quoted_author_name: 'b',
+        quoted_text: 'q'
+      }
+    });
+    const out = renderHtmlReport(run, [p]);
+    expect(out).toContain('href="https://x.com/b/status/55"');
+    expect(out).not.toContain('href="//x.com/b/status/55"');
+  });
 });
 
 describe('offline media rewriting', () => {

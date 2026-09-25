@@ -26,6 +26,38 @@ describe('filename tokens', () => {
   });
 });
 
+describe('extension and suffix handling', () => {
+  it('does not duplicate the extension when %ext is embedded in the template', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num_%ext', ext: 'json' }))
+      .toBe('archive_42_json');
+  });
+
+  it('appends the extension when the template lacks it', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num', ext: 'json' }))
+      .toBe('archive_42.json');
+  });
+
+  it('does not duplicate an extension already written in the template', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num.json', ext: 'json' }))
+      .toBe('archive_42.json');
+  });
+
+  it('places _snapshot before the automatically appended extension', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num', ext: 'json', suffix: '_snapshot' }))
+      .toBe('archive_42_snapshot.json');
+  });
+
+  it('places _snapshot before an extension already in the template', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num.json', ext: 'json', suffix: '_snapshot' }))
+      .toBe('archive_42_snapshot.json');
+  });
+
+  it('appends the snapshot suffix deterministically when %ext is embedded', () => {
+    expect(filenameFor({ ...ctx, template: 'archive_%num_%ext', ext: 'json', suffix: '_snapshot' }))
+      .toBe('archive_42_json_snapshot');
+  });
+});
+
 describe('filename sanitization', () => {
   it('strips Windows-illegal characters', () => {
     expect(sanitizeFilename('a<b>c:d"e/f\\g|h?i*j')).toBe('a b c d e f g h i j');

@@ -23,9 +23,10 @@ It unifies and replaces the older `bookmarks.js` and `profile.js` console script
   page scrolls again. Runs survive popup closure, service-worker suspension, and tab reloads.
 - **Full state machine** — `idle → running → resting → paused → stopping → completed /
   limited / error`, driven from the toolbar popup, the in-page panel, or the options page.
-- **Human pacing** — jittered delays and scroll distances, scheduled rests, stall detection
-  with recovery nudges, and reliable bottom-of-timeline detection (page must be visible,
-  online, and unchanged before "completed" is declared).
+- **Human pacing** — center-weighted jittered delays and scroll distances, occasional
+  reading pauses, rare backtracks and micro-scrolls, scheduled rests with jittered
+  thresholds, stall detection with recovery nudges, and reliable bottom-of-timeline
+  detection (page must be visible, online, and unchanged before "completed" is declared).
 - **Configurable limits** — max active duration, max posts, oldest date, idle timeout.
 - **Polished exports** — archive-envelope JSON (with optional legacy array mode) and a
   self-contained, searchable/filterable HTML report; tokenized filenames.
@@ -42,11 +43,21 @@ It unifies and replaces the older `bookmarks.js` and `profile.js` console script
 
 ## Installation
 
-1. Clone or download this repository — no build step is required.
+The extension runs straight from the repo — **no build step and no `node_modules` are
+needed to use it**. Everything it loads (including the ZIP library, vendored in
+`src/vendor`) is already in the tree.
+
+1. Clone the repository, or download the repo as a ZIP and **extract it** — a ZIP is just
+   a transport artifact, Chrome cannot install it directly.
 2. Open `chrome://extensions`, enable **Developer mode**.
-3. Click **Load unpacked** and select the repository folder
+3. Click **Load unpacked** and select the extracted repository folder
    (the one containing `manifest.json`).
 4. Pin "X Archive" to the toolbar.
+
+`npm install` is only for development (tests, lint, icon regeneration) — see
+[Development](#development). Load unpacked remains the supported local install path;
+one-click distribution for other users would require publishing to the Chrome Web Store.
+No CRX files or release binaries are provided.
 
 To update: pull/copy the new files and press the reload (⟳) button on the extension card.
 Your archives are preserved — they live in extension IndexedDB, not in the repo.
@@ -95,7 +106,27 @@ Then:
   Returning to the original route allows a resume.
 - Manual pauses do not consume the *max active duration*; scheduled rests do.
 
+### Background / hidden-tab operation
+
+Content scripts are subject to Chrome's hidden-page throttling. When the scraping tab is
+hidden, covered, or its window is minimized, timers may be checked only about once per
+second and can degrade to roughly once per minute under intensive throttling — and X may
+suspend rendering new content entirely while the page is not visible.
+
+**Reliable recommendation:** drag the scraping tab into its own non-minimized window, keep
+that tab selected and at least partially visible on screen, then do other work in a
+different browser window. Capture in minimized, covered, or hidden tabs is **not
+guaranteed**.
+
+By default the scraper simply waits while the tab is hidden (the stall timer stays frozen)
+and resumes when it becomes visible again. A **best-effort** setting,
+`continueWhenHidden` (off by default), keeps extracting, persisting, and scrolling while
+hidden. Even with it on, stall detection never runs while hidden — throttled rendering can
+never be mistaken for the bottom of the timeline — but progress may be slow or incomplete.
+
 ---
+
+
 
 ## Settings
 
@@ -107,10 +138,12 @@ options page. Every field shows inline descriptions and validation.
 
 | Preset | tick delay | scroll | rest every | rest length | stall timeout | recovery |
 |---|---|---|---|---|---|---|
-| Gentle | 5–9 s | 400–800 px | 50 | 30–45 s | 120 s | 2 |
-| **Balanced (default)** | 3–6 s | 650–1150 px | 80 | 20–28 s | 120 s | 2 |
-| Fast (use with care) | 1.5–3 s | 900–1500 px | 150 | 12–18 s | 90 s | 1 |
+| Gentle | 2.5–7.5 s | 240–760 px | ~45 (±35%) | 30–90 s | 150 s | 2 |
+| **Balanced (default)** | 1.4–5.2 s | 320–980 px | ~65 (±30%) | 18–55 s | 120 s | 2 |
+| Fast (use with care) | 0.8–2.4 s | 650–1250 px | ~110 (±20%) | 12–30 s | 90 s | 1 |
 | Custom | your values | | | | | |
+
+Presets also tune the reading-pause and backtrack chances (see below).
 
 Editing any preset-managed field switches the preset to *Custom*. *Fast* carries a warning
 because aggressive pacing risks rate limits and missed posts.
@@ -119,13 +152,26 @@ because aggressive pacing risks rate limits and missed posts.
 
 | Field | Default | Range | Meaning |
 |---|---|---|---|
-| `tickDelayMinMs`/`MaxMs` | 3000/6000 | 250–120000 | pause between scrape cycles |
-| `scrollMinPx`/`MaxPx` | 650/1150 | 50–5000 | scroll step per tick |
-| `restEveryPosts` | 80 | 5–5000 | take a break after N new posts |
-| `restMinMs`/`MaxMs` | 20000/28000 | 1000–600000 | scheduled break length |
+| `tickDelayMinMs`/`MaxMs` | 1400/5200 | 250–120000 | pause between scrape cycles |
+| `scrollMinPx`/`MaxPx` | 320/980 | 50–5000 | scroll step per tick |
+| `restEveryPosts` | 65 | 5–5000 | average/center of the rest schedule — a break after roughly N new posts |
+| `restCountJitterPercent` | 30 | 0–75 | how far the actual rest threshold jitters around `restEveryPosts` (0 = exactly periodic) |
+| `restMinMs`/`MaxMs` | 18000/55000 | 1000–600000 | scheduled break length |
+| `readingPauseChancePercent` | 8 | 0–50 | chance a tick adds an extra pause, as if you stopped to read |
+| `readingPauseMinMs`/`MaxMs` | 7000/24000 | 1000–120000 | length of an occasional extra reading pause |
+| `backtrackChancePercent` | 4 | 0–25 | rare chance a downward scroll instead nudges back up a little |
+| `smoothScroll` | on | — | native smooth scrolling while visible (instant while hidden) |
 | `stallTimeoutMs` | 120000 | 10000–600000 | idle budget while visible before finishing |
 | `stallRecoveryAttempts` | 2 | 0–10 | scroll nudges before declaring the bottom |
-| `randomize` | on | — | jitter delays/distances (off = fixed midpoints) |
+| `randomize` | on | — | center-weighted sampling inside all ranges (off = fixed midpoints) |
+
+With `randomize` on, every sampled value uses a center-weighted distribution (average of
+three uniform draws), so values cluster near the middle of each range. Reading pauses are
+added on top of the normal tick delay. A fixed ~12% of randomized downward scrolls are
+additionally scaled down to a 35–70% micro-scroll, and a rare backtrack (per
+`backtrackChancePercent`) scrolls up by 12–32% of the proposed step — both are internal,
+non-configurable humanization. None of this is meant to evade detection; it exists to
+make pacing non-periodic and to help X keep rendering reliably.
 
 ### Limits (all default to "no limit")
 
@@ -138,7 +184,10 @@ because aggressive pacing risks rate limits and missed posts.
 ### Behavior
 
 `autoScroll` (on), `autoExpandText` (on), `autoResume` (on — resume a run after reloading the
-same source), `showOverlay` (on — in-page progress panel), `showBadge` (on — toolbar badge:
+same source), `smoothScroll` (on — smooth native scrolling while visible; instant while
+hidden), `continueWhenHidden` (off — keep scraping a hidden tab on a best-effort basis;
+Chrome throttles hidden timers and X may stop rendering, so it can be slow or incomplete),
+`showOverlay` (on — in-page progress panel), `showBadge` (on — toolbar badge:
 post count while running, color-coded state: blue running, amber resting, violet paused,
 green done, red error).
 
@@ -300,7 +349,8 @@ Uninstalling the extension removes everything it stored.
 ## Known X/Chrome constraints
 
 - **Active tab**: Chrome throttles hidden tabs heavily; keep the scraping tab visible (or in
-  its own window) for reliable capture. Stall time only accrues while visible.
+  its own window) for reliable capture — see *Background / hidden-tab operation*. Stall
+  time only accrues while visible.
 - **X DOM changes**: selectors (`data-testid`s) drift — fixtures + tests make updating easy.
 - **Protected/deleted posts and deferred replies** may be unreachable; thread diagnostics
   record rather than hide this.
@@ -315,7 +365,8 @@ Uninstalling the extension removes everything it stored.
   injected, then start again.
 - *Run paused `source_changed`* — you navigated; go back to the source URL and Resume.
 - *No new posts / stall warnings* — the tab was hidden or X showed an error surface;
-  keep it visible and online.
+  keep it visible and online. With `continueWhenHidden` on, throttled capture is best
+  effort only and may be slow or incomplete.
 - *Media ZIP disabled* — the first download asks for `pbs.twimg.com` access; granting it is
   required to fetch images.
 - *Export produced fewer posts* — check the run's `stopReason` and warnings; `limited` and
@@ -372,4 +423,5 @@ browser: load unpacked with no manifest errors; detect each source type; Start �
 Pause → Resume → Stop across popup/badge/overlay; close popup mid-run; reload recovery and
 route-change pause; each limit/stop reason; JSON/HTML export filenames; HTML
 search/filter/sort; legacy import round-trip; media permission grant + ZIP + offline links
-+ a failed image; thread queue review/run/cancel; overlay and media-ZIP defaults off.
++ a failed image; thread queue review/run/cancel; overlay default on, media auto-ZIP
+default off.

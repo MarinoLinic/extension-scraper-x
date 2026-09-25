@@ -25,6 +25,7 @@
       this.recoveryAttempts = 0;
       this.lastScrollHeight = 0;
       this.postsSinceRest = 0;
+      this.nextRestAt = null;
       this.restUntil = null;
       this.snapshotCount = 0;
       this.persistedCount = 0;
@@ -49,22 +50,48 @@
 
     now() { return Date.now(); }
 
-    tickDelay() {
-      const s = this.settings;
-      if (!s.randomize) return Math.round((s.tickDelayMinMs + s.tickDelayMaxMs) / 2);
-      return XA.util.randInt(s.tickDelayMinMs, s.tickDelayMaxMs);
+    humanUnit() {
+      return (Math.random() + Math.random() + Math.random()) / 3;
     }
 
-    scrollAmount() {
+    sampleRange(min, max) {
+      const lo = Math.min(Number(min), Number(max));
+      const hi = Math.max(Number(min), Number(max));
+      if (!this.settings || !this.settings.randomize) return Math.round((lo + hi) / 2);
+      return Math.round(lo + this.humanUnit() * (hi - lo));
+    }
+
+    randomPercent(percent) {
+      return Math.random() * 100 < (percent || 0);
+    }
+
+    tickDelay() {
       const s = this.settings;
-      if (!s.randomize) return Math.round((s.scrollMinPx + s.scrollMaxPx) / 2);
-      return XA.util.randInt(s.scrollMinPx, s.scrollMaxPx);
+      const base = this.sampleRange(s.tickDelayMinMs, s.tickDelayMaxMs);
+      if (s.randomize && this.randomPercent(s.readingPauseChancePercent)) {
+        return base + this.sampleRange(s.readingPauseMinMs, s.readingPauseMaxMs);
+      }
+      return base;
+    }
+
+    scrollAmount(humanize = true) {
+      const s = this.settings;
+      let px = this.sampleRange(s.scrollMinPx, s.scrollMaxPx);
+      if (humanize && s.randomize && Math.random() < 0.12) {
+        px = Math.max(1, Math.round(px * (0.35 + Math.random() * 0.35)));
+      }
+      return px;
     }
 
     restDuration() {
+      return this.sampleRange(this.settings.restMinMs, this.settings.restMaxMs);
+    }
+
+    restThreshold() {
       const s = this.settings;
-      if (!s.randomize) return Math.round((s.restMinMs + s.restMaxMs) / 2);
-      return XA.util.randInt(s.restMinMs, s.restMaxMs);
+      if (!s.randomize) return s.restEveryPosts;
+      const spread = s.restEveryPosts * (s.restCountJitterPercent || 0) / 100;
+      return Math.max(5, this.sampleRange(s.restEveryPosts - spread, s.restEveryPosts + spread));
     }
 
     sendToBackground(msg) {
@@ -100,6 +127,7 @@
         restRemainingMs: this.state === 'resting' && this.restUntil
           ? Math.max(0, this.restUntil - this.now()) : null,
         stallMs: this.currentStallMs(),
+        hidden: typeof document !== 'undefined' ? !!document.hidden : false,
         message: this.message,
         source: this.run ? this.run.source : this.currentSource()
       };
@@ -152,6 +180,7 @@
       this.persistedCount = run.stats && run.stats.posts ? run.stats.posts : 0;
       this.snapshotCount = this.persistedCount;
       this.lastAdded = 0;
+      this.nextRestAt = this.restThreshold();
       this.lastScrollHeight = this.scrollHeight();
       this.stallMs = 0;
       this.recoveryAttempts = 0;
@@ -176,10 +205,24 @@
       return el ? el.scrollHeight : 0;
     }
 
-    doScroll(px) {
+    doScroll(px, humanize = true) {
+      const s = this.settings || {};
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      let top = px;
+      if (humanize && px > 0 && s.randomize && this.randomPercent(s.backtrackChancePercent)) {
+        top = -Math.max(1, Math.round(px * (0.12 + Math.random() * 0.20)));
+      }
+      const behavior = (!hidden && s.smoothScroll !== false) ? 'smooth' : 'auto';
       const el = document.scrollingElement || document.documentElement;
-      if (el && el.scrollBy) el.scrollBy(0, px);
-      else window.scrollBy(0, px);
+      if (el && el.scrollBy) {
+        try {
+          el.scrollBy({ top, left: 0, behavior });
+          return;
+        } catch (_) { /* fall back to numeric scrollBy */ }
+        el.scrollBy(0, top);
+      } else if (typeof window !== 'undefined' && window.scrollBy) {
+        window.scrollBy(0, top);
+      }
     }
 
     async tick() {
@@ -191,13 +234,20 @@
         return;
       }
 
-      if (document.hidden || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const hidden = typeof document !== 'undefined' && !!document.hidden;
+      if (offline || (hidden && !this.settings.continueWhenHidden)) {
         this.stallWindowStart = this.now();
-        this.message = document.hidden ? 'Tab hidden — waiting (stall timer frozen)' : 'Offline — waiting';
+        this.message = offline ? 'Offline — waiting' : 'Tab hidden — waiting (stall timer frozen)';
         this.reportState();
         return;
       }
-      this.message = '';
+      if (hidden) {
+        this.stallMs = 0;
+        this.stallWindowStart = null;
+        this.recoveryAttempts = 0;
+      }
+      this.message = hidden ? 'Hidden-tab best effort — Chrome/X may throttle loading' : '';
 
       const duration = this.settings.maxActiveDurationMs;
       if (duration && this.elapsed() >= duration) {
@@ -245,13 +295,14 @@
         this.recoveryAttempts = 0;
       }
 
-      if (this.postsSinceRest >= this.settings.restEveryPosts) {
+      if (this.postsSinceRest >= (this.nextRestAt || this.settings.restEveryPosts)) {
         this.postsSinceRest = 0;
+        this.nextRestAt = this.restThreshold();
         await this.enterRest();
         return;
       }
 
-      if (!progressed) {
+      if (!progressed && !hidden) {
         if (this.stallWindowStart == null) this.stallWindowStart = this.now();
         const stalled = this.currentStallMs();
         if (stalled >= this.settings.stallTimeoutMs) {
@@ -260,8 +311,8 @@
             this.stallWindowStart = this.now();
             this.message = 'No new posts — recovery nudge ' + this.recoveryAttempts;
             this.reportState();
-            this.doScroll(-Math.round(this.scrollAmount() / 2));
-            this.doScroll(this.scrollAmount());
+            this.doScroll(-Math.round(this.scrollAmount(false) / 2), false);
+            this.doScroll(this.scrollAmount(false), false);
             return;
           }
           if (this.errorSurfaceVisible()) {

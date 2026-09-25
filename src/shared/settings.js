@@ -10,8 +10,13 @@
     scrollMinPx: [50, 5000],
     scrollMaxPx: [50, 5000],
     restEveryPosts: [5, 5000],
+    restCountJitterPercent: [0, 75],
     restMinMs: [1000, 600000],
     restMaxMs: [1000, 600000],
+    readingPauseChancePercent: [0, 50],
+    readingPauseMinMs: [1000, 120000],
+    readingPauseMaxMs: [1000, 120000],
+    backtrackChancePercent: [0, 25],
     stallTimeoutMs: [10000, 600000],
     stallRecoveryAttempts: [0, 10],
     maxPosts: [1, 1000000],
@@ -21,17 +26,21 @@
   const PAIRS = [
     ['tickDelayMinMs', 'tickDelayMaxMs'],
     ['scrollMinPx', 'scrollMaxPx'],
-    ['restMinMs', 'restMaxMs']
+    ['restMinMs', 'restMaxMs'],
+    ['readingPauseMinMs', 'readingPauseMaxMs']
   ];
 
   const BOOL_KEYS = [
     'randomize', 'autoScroll', 'autoExpandText', 'autoResume',
-    'showOverlay', 'showBadge', 'autoExportOnComplete', 'saveAs', 'autoMediaZip'
+    'showOverlay', 'showBadge', 'autoExportOnComplete', 'saveAs', 'autoMediaZip',
+    'smoothScroll', 'continueWhenHidden'
   ];
 
   const PRESET_FIELDS = [
     'tickDelayMinMs', 'tickDelayMaxMs', 'scrollMinPx', 'scrollMaxPx',
-    'restEveryPosts', 'restMinMs', 'restMaxMs',
+    'restEveryPosts', 'restCountJitterPercent', 'restMinMs', 'restMaxMs',
+    'readingPauseChancePercent', 'readingPauseMinMs', 'readingPauseMaxMs',
+    'backtrackChancePercent',
     'stallTimeoutMs', 'stallRecoveryAttempts'
   ];
 

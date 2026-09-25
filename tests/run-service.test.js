@@ -264,6 +264,24 @@ describe('auto-export claiming', () => {
     await rs.handleState({ runId: run.id, state: 'error' }, sender(10));
     expect(XA.exportService.exportRun).not.toHaveBeenCalled();
   });
+
+  it('suppresses auto-export when the user deletes an active run', async () => {
+    const run = autoRun();
+    await db.createRun(run);
+    globalThis.chrome.tabs.sendMessage = (tabId, msg, cb) => {
+      sent.push({ tabId, msg });
+      if (msg.action === 'stop') {
+        rs.handleState({ runId: run.id, state: 'completed' }, sender(tabId))
+          .then(() => cb({ ok: true }));
+      } else if (cb) {
+        cb({ ok: true });
+      }
+    };
+    const resp = await rs.deleteRun({ runId: run.id });
+    expect(resp.ok).toBe(true);
+    expect(XA.exportService.exportRun).not.toHaveBeenCalled();
+    expect(await db.getRun(run.id)).toBeUndefined();
+  });
 });
 
 describe('thread job building', () => {

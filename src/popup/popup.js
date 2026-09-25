@@ -80,22 +80,40 @@ function render() {
   $('xar-mediazip').disabled = !hasRun;
 }
 
+let refreshing = false;
+let refreshTimer = null;
+
 async function refresh() {
-  const tab = await activeTab();
-  if (!tab) { setStatus('No active tab'); return; }
-  tabId = tab.id;
+  if (refreshing) return;
+  refreshing = true;
   try {
-    ctx = await send({ type: M.GET_TAB_CONTEXT, tabId });
-  } catch (e) {
-    ctx = null;
-    setStatus('Could not reach the extension worker: ' + e.message);
-    return;
+    const tab = await activeTab();
+    if (!tab) { setStatus('No active tab'); return; }
+    tabId = tab.id;
+    try {
+      ctx = await send({ type: M.GET_TAB_CONTEXT, tabId });
+    } catch (e) {
+      ctx = null;
+      setStatus('Could not reach the extension worker: ' + e.message);
+      return;
+    }
+    if (!ctx || !ctx.ok) {
+      setStatus((ctx && ctx.error) || 'No context');
+      return;
+    }
+    render();
+  } finally {
+    refreshing = false;
   }
-  if (!ctx || !ctx.ok) {
-    setStatus((ctx && ctx.error) || 'No context');
-    return;
-  }
-  render();
+}
+
+function startRefreshLoop() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(() => { refresh(); }, 1000);
+  window.addEventListener('unload', () => {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }, { once: true });
 }
 
 async function ensureMediaPermission() {
@@ -168,3 +186,4 @@ function wire() {
 
 wire();
 refresh();
+startRefreshLoop();

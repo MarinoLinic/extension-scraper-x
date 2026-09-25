@@ -160,7 +160,7 @@
       r.state = 'completed';
       r.stopReason = r.stopReason || 'manual';
       r.completedAt = XA.util.nowIso();
-      if (r.settings && r.settings.autoExportOnComplete && !r.autoExported) {
+      if (!r.deleting && r.settings && r.settings.autoExportOnComplete && !r.autoExported) {
         r.autoExported = true;
         claimed = true;
       }
@@ -178,8 +178,15 @@
   async function deleteRun(msg) {
     const run = await XA.db.getRun(msg.runId);
     if (!run) return { ok: true };
-    if (XA.messages.UNFINISHED_STATES.includes(run.state) && run.tabId != null) {
-      await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'stop', reason: 'deleted' }).catch(() => {});
+    if (XA.messages.UNFINISHED_STATES.includes(run.state)) {
+      await XA.db.patchRun(run.id, (r) => {
+        r.deleting = true;
+        r.autoExported = true;
+        return r;
+      });
+      if (run.tabId != null) {
+        await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'stop', reason: 'deleted' }).catch(() => {});
+      }
     }
     await XA.db.deleteRun(run.id);
     if (run.tabId != null) {
@@ -244,7 +251,7 @@
       if (msg.stopReason) r.stopReason = msg.stopReason;
       if (['completed', 'limited', 'error'].includes(msg.state)) r.completedAt = XA.util.nowIso();
       r.runtime = Object.assign({}, r.runtime, msg.runtime || {});
-      if (['completed', 'limited'].includes(r.state) &&
+      if (['completed', 'limited'].includes(r.state) && !r.deleting &&
           r.settings && r.settings.autoExportOnComplete && !r.autoExported) {
         r.autoExported = true;
         claimed = true;

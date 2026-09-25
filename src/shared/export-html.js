@@ -95,8 +95,9 @@
 
   function renderQuote(q, mediaMap, offline) {
     if (!q) return '';
-    const link = safeUrl(q.quoted_tweet_url)
-      ? '<a class="xa-qtime" href="' + esc(q.quoted_tweet_url) + '" target="_blank" rel="noopener noreferrer">' +
+    const quoteUrl = safeUrl(q.quoted_tweet_url);
+    const link = quoteUrl
+      ? '<a class="xa-qtime" href="' + esc(quoteUrl) + '" target="_blank" rel="noopener noreferrer">' +
         esc(q.quoted_date_displayed || 'Quoted post') + '</a>' : '';
     const avatar = q.quoted_avatar_url ? imgTag(q.quoted_avatar_url, '', mediaMap, offline) : '';
     let inner = '<div class="xa-quote"><div class="xa-quote-author">' + avatar +

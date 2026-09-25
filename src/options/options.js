@@ -33,19 +33,29 @@ const FIELD_GROUPS = [
     title: 'Timing',
     fields: [
       { key: 'tickDelayMinMs', kind: 'number', label: 'Tick delay min (ms)', range: [250, 120000],
-        desc: 'Shortest pause between scrape cycles. Default 3000.' },
+        desc: 'Shortest pause between scrape cycles. Default 1400.' },
       { key: 'tickDelayMaxMs', kind: 'number', label: 'Tick delay max (ms)', range: [250, 120000],
-        desc: 'Longest pause between scrape cycles. Default 6000.' },
+        desc: 'Longest pause between scrape cycles. Default 5200.' },
       { key: 'scrollMinPx', kind: 'number', label: 'Scroll min (px)', range: [50, 5000],
-        desc: 'Smallest scroll step per tick. Default 650.' },
+        desc: 'Smallest scroll step per tick. Default 320.' },
       { key: 'scrollMaxPx', kind: 'number', label: 'Scroll max (px)', range: [50, 5000],
-        desc: 'Largest scroll step per tick. Default 1150.' },
-      { key: 'restEveryPosts', kind: 'number', label: 'Rest every N new posts', range: [5, 5000],
-        desc: 'Takes a break after this many newly captured posts. Default 80.' },
+        desc: 'Largest scroll step per tick. Default 980.' },
+      { key: 'restEveryPosts', kind: 'number', label: 'Rest every N new posts (average)', range: [5, 5000],
+        desc: 'Center of the break schedule — with Randomize on, the actual threshold jitters around this value instead of being exactly periodic. Default 65.' },
+      { key: 'restCountJitterPercent', kind: 'number', label: 'Rest threshold jitter (%)', range: [0, 75],
+        desc: 'How far the per-run rest threshold may wander above or below the average. 0 = exactly every N posts. Default 30.' },
       { key: 'restMinMs', kind: 'number', label: 'Rest min (ms)', range: [1000, 600000],
-        desc: 'Shortest scheduled break. Default 20000.' },
+        desc: 'Shortest scheduled break. Default 18000.' },
       { key: 'restMaxMs', kind: 'number', label: 'Rest max (ms)', range: [1000, 600000],
-        desc: 'Longest scheduled break. Default 28000.' },
+        desc: 'Longest scheduled break. Default 55000.' },
+      { key: 'readingPauseChancePercent', kind: 'number', label: 'Reading pause chance (%)', range: [0, 50],
+        desc: 'Chance that a tick adds an extra delay, as if you stopped to read. Default 8.' },
+      { key: 'readingPauseMinMs', kind: 'number', label: 'Reading pause min (ms)', range: [1000, 120000],
+        desc: 'Shortest extra reading pause when one occurs. Default 7000.' },
+      { key: 'readingPauseMaxMs', kind: 'number', label: 'Reading pause max (ms)', range: [1000, 120000],
+        desc: 'Longest extra reading pause when one occurs. Default 24000.' },
+      { key: 'backtrackChancePercent', kind: 'number', label: 'Backtrack chance (%)', range: [0, 25],
+        desc: 'Rare chance a downward scroll instead nudges back up a little, like re-checking a post. Default 4.' },
       { key: 'stallTimeoutMs', kind: 'number', label: 'Stall timeout (ms)', range: [10000, 600000],
         desc: 'How long the timeline may produce nothing new (while the tab is visible) before the run gives up or completes. Default 120000.' },
       { key: 'stallRecoveryAttempts', kind: 'number', label: 'Stall recovery attempts', range: [0, 10],
@@ -70,6 +80,10 @@ const FIELD_GROUPS = [
       { key: 'autoExpandText', kind: 'check', label: 'Expand "Show more" text automatically' },
       { key: 'autoResume', kind: 'check', label: 'Auto-resume after reloading the same source',
         desc: 'If a run was interrupted by a reload or navigation, continue it when the same source is detected again.' },
+      { key: 'smoothScroll', kind: 'check', label: 'Smooth scrolling while visible',
+        desc: 'Uses native smooth scrolling while the tab is visible; instant jumps while hidden or when off.' },
+      { key: 'continueWhenHidden', kind: 'check', label: 'Continue in hidden tabs (best effort)',
+        desc: 'Off by default. Chrome throttles hidden timers and X may stop rendering, so capture can be slow or incomplete.' },
       { key: 'showOverlay', kind: 'check', label: 'Show the in-page progress panel' },
       { key: 'showBadge', kind: 'check', label: 'Show the toolbar badge' }
     ]
@@ -387,6 +401,13 @@ async function selectRun(runId) {
     const w = el('div', 'warnbox', 'Warnings: ' + run.warnings.join(' · '));
     detail.appendChild(w);
   }
+
+  const settingsDet = el('details', 'run-settings');
+  settingsDet.appendChild(el('summary', null, 'Run settings'));
+  const settingsPre = el('pre');
+  settingsPre.textContent = JSON.stringify(run.settings, null, 2);
+  settingsDet.appendChild(settingsPre);
+  detail.appendChild(settingsDet);
 
   const actions = el('div', 'detail-actions');
   const mk = (label, fn, cls) => {

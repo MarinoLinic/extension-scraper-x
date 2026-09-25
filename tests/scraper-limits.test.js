@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { XA } from './helpers/load.js';
 
 const { ScraperController } = XA.content;
@@ -11,7 +11,7 @@ function controller(settings = {}) {
 
 describe('randomized bounds', () => {
   it('tick delay stays within configured range', () => {
-    const c = controller({ tickDelayMinMs: 1000, tickDelayMaxMs: 2000 });
+    const c = controller({ tickDelayMinMs: 1000, tickDelayMaxMs: 2000, readingPauseChancePercent: 0 });
     for (let i = 0; i < 200; i++) {
       const d = c.tickDelay();
       expect(d).toBeGreaterThanOrEqual(1000);
@@ -19,11 +19,11 @@ describe('randomized bounds', () => {
     }
   });
 
-  it('scroll amount stays within configured range', () => {
+  it('scroll amount stays within configured range (aside from micro-scrolls)', () => {
     const c = controller({ scrollMinPx: 100, scrollMaxPx: 300 });
     for (let i = 0; i < 200; i++) {
       const d = c.scrollAmount();
-      expect(d).toBeGreaterThanOrEqual(100);
+      expect(d).toBeGreaterThanOrEqual(35);
       expect(d).toBeLessThanOrEqual(300);
     }
   });
@@ -152,5 +152,164 @@ describe('new-post accounting', () => {
     c.persistedCount = 200;
     c.maybeSnapshot();
     expect(exported).toBe(1);
+  });
+});
+
+describe('humanized pacing', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('humanUnit averages three draws — center-weighted', () => {
+    const c = controller();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    expect(c.humanUnit()).toBe(0.5);
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    expect(c.humanUnit()).toBe(0.9);
+  });
+
+  it('sampleRange uses center-weighted sampling, midpoint when randomize off', () => {
+    const c = controller({ randomize: true });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    expect(c.sampleRange(100, 300)).toBe(200);
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    expect(c.sampleRange(100, 300)).toBe(280);
+    const fixed = controller({ randomize: false });
+    vi.spyOn(Math, 'random').mockReturnValue(0.01);
+    expect(fixed.sampleRange(100, 300)).toBe(200);
+  });
+
+  it('a reading pause can push a tick delay beyond the base max', () => {
+    const c = controller({
+      tickDelayMinMs: 1000, tickDelayMaxMs: 2000,
+      readingPauseChancePercent: 100, readingPauseMinMs: 7000, readingPauseMaxMs: 8000
+    });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(c.tickDelay()).toBe(8000);
+  });
+
+  it('restThreshold jitters within the configured spread and floors at 5', () => {
+    const c = controller({ restEveryPosts: 100, restCountJitterPercent: 30 });
+    for (let i = 0; i < 200; i++) {
+      const t = c.restThreshold();
+      expect(t).toBeGreaterThanOrEqual(70);
+      expect(t).toBeLessThanOrEqual(130);
+    }
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(c.restThreshold()).toBe(70);
+    vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    expect(c.restThreshold()).toBe(130);
+    const tiny = controller({ restEveryPosts: 5, restCountJitterPercent: 75 });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(tiny.restThreshold()).toBe(5);
+    const fixed = controller({ randomize: false, restEveryPosts: 100, restCountJitterPercent: 30 });
+    expect(fixed.restThreshold()).toBe(100);
+  });
+
+  it('micro-scrolls shrink about a 12% slice of randomized scrolls', () => {
+    const c = controller({ scrollMinPx: 100, scrollMaxPx: 300 });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(c.scrollAmount()).toBe(35);
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    expect(c.scrollAmount()).toBe(298); // no micro-scroll at the top of the range
+  });
+
+  it('doScroll backtracks upward by 12–32% when the chance fires', () => {
+    const c = controller({ backtrackChancePercent: 100 });
+    const spy = vi.fn();
+    (document.scrollingElement || document.documentElement).scrollBy = spy;
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    c.doScroll(1000);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].top).toBe(-120);
+    vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    c.doScroll(1000);
+    expect(spy.mock.calls[1][0].top).toBe(-320);
+  });
+
+  it('doScroll never backtracks or randomizes when humanize=false', () => {
+    const c = controller({ backtrackChancePercent: 100 });
+    const spy = vi.fn();
+    (document.scrollingElement || document.documentElement).scrollBy = spy;
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    c.doScroll(1000, false);
+    expect(spy.mock.calls[0][0].top).toBe(1000);
+  });
+
+  it('scrolls smoothly while visible and instantly while hidden', () => {
+    const c = controller({ backtrackChancePercent: 0, smoothScroll: true });
+    const spy = vi.fn();
+    (document.scrollingElement || document.documentElement).scrollBy = spy;
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    c.doScroll(500, false);
+    expect(spy.mock.calls[0][0]).toMatchObject({ top: 500, left: 0, behavior: 'smooth' });
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    c.doScroll(500, false);
+    expect(spy.mock.calls[1][0]).toMatchObject({ top: 500, left: 0, behavior: 'auto' });
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    c.settings.smoothScroll = false;
+    c.doScroll(500, false);
+    expect(spy.mock.calls[2][0]).toMatchObject({ top: 500, left: 0, behavior: 'auto' });
+  });
+});
+
+describe('hidden-tab behavior', () => {
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    vi.restoreAllMocks();
+  });
+
+  function hiddenRunnable(c) {
+    c.run = { id: 'run_h', source: { key: 'profile:a:posts', type: 'profile' }, runtime: {}, stats: { posts: 0 } };
+    c.state = 'running';
+    c.sourceMatches = () => true;
+    c.reportState = () => {};
+    XA.extractor.extractVisible = () => ({ posts: [], tail: null });
+    c.scrollHeight = () => 1000;
+    c.lastScrollHeight = 1000;
+    return c;
+  }
+
+  it('waits while hidden by default', async () => {
+    const c = hiddenRunnable(controller({ continueWhenHidden: false }));
+    const spy = vi.fn();
+    (document.scrollingElement || document.documentElement).scrollBy = spy;
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    await c.tick();
+    expect(c.state).toBe('running');
+    expect(c.message).toMatch(/hidden/i);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('continues best-effort while hidden but never claims the bottom or recovers', async () => {
+    const c = hiddenRunnable(controller({
+      continueWhenHidden: true,
+      stallTimeoutMs: 1000,
+      stallRecoveryAttempts: 0
+    }));
+    const spy = vi.fn();
+    (document.scrollingElement || document.documentElement).scrollBy = spy;
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    c.stallMs = 99999999;
+    c.stallWindowStart = c.now() - 99999999;
+    const finishSpy = vi.spyOn(c, 'finish');
+    for (let i = 0; i < 5; i++) await c.tick();
+    expect(c.state).toBe('running');
+    expect(finishSpy).not.toHaveBeenCalled();
+    expect(c.recoveryAttempts).toBe(0);
+    expect(c.stallMs).toBe(0);
+    expect(c.stallWindowStart).toBeNull();
+    expect(c.message).toMatch(/best effort/i);
+    expect(c.runtimeSnapshot().hidden).toBe(true);
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].behavior).toBe('auto');
+
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    await c.tick();
+    expect(c.state).toBe('running');
+    expect(finishSpy).not.toHaveBeenCalled();
+    expect(c.recoveryAttempts).toBe(0);
+    expect(c.currentStallMs()).toBeLessThan(1000);
+    expect(c.message).not.toMatch(/best effort/i);
   });
 });

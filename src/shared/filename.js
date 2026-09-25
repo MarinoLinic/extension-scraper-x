@@ -61,9 +61,17 @@
   }
 
   function filenameFor(ctx) {
-    const base = expandTemplate((ctx && ctx.template) || 'x_%type_%handle_%date_%num', ctx);
-    const ext = (ctx && ctx.ext) || '';
-    return ext ? base + '.' + ext.replace(/^\./, '') : base;
+    const c = ctx || {};
+    const template = c.template || 'x_%type_%handle_%date_%num';
+    const ext = c.ext ? String(c.ext).replace(/^\./, '') : '';
+    const suffix = c.suffix ? String(c.suffix) : '';
+    const base = expandTemplate(template, c);
+    if (!ext || template.indexOf('%ext') !== -1) return base + suffix;
+    const tail = '.' + ext;
+    if (base.toLowerCase().endsWith(tail.toLowerCase())) {
+      return base.slice(0, base.length - tail.length) + suffix + tail;
+    }
+    return base + suffix + tail;
   }
 
   XA.filename = { sanitizePart, sanitizeFilename, tokenValues, expandTemplate, filenameFor };

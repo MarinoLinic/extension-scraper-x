@@ -124,4 +124,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .jobstate.running { color: #1d9bf0; }
 .jobstate.failed, .jobstate.incomplete { color: #e8b04b; }
 .warnbox { background: #332d1a; border: 1px solid #6b5a2a; color: #e8d9a0; border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin: 10px 0; }
+.run-settings summary { cursor: pointer; font-size: 13px; color: #8b98a5; margin: 8px 0 4px; }
+.run-settings pre { background: #16181c; border: 1px solid #2f3336; border-radius: 8px; padding: 10px 12px; font-size: 11.5px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 code { background: #2f3336; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
