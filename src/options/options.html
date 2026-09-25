@@ -22,6 +22,18 @@
   <p class="note">Every captured batch is written to the local archive database before the page
   scrolls — that checkpoint is always on and is what survives tab reloads and browser restarts.
   The options below control pacing, limits, exports, filenames, and optional media downloads.</p>
+  <aside class="background-guide">
+    <h3>Most reliable background setup</h3>
+    <ol>
+      <li>Drag the scraping tab into its own Chrome window.</li>
+      <li>Keep that tab selected.</li>
+      <li>Do not minimize the window.</li>
+      <li>Keep at least part of the window visible.</li>
+      <li>Browse normally in a different Chrome window.</li>
+    </ol>
+    <p class="note">The “Continue in hidden tabs” setting is best effort; Chrome may
+    throttle timers and X may stop rendering new posts.</p>
+  </aside>
   <div id="settings-form"></div>
   <div class="form-actions">
     <button id="settings-save" class="primary">Save settings</button>
