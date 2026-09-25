@@ -109,6 +109,30 @@ describe('post upserts', () => {
     const posts = await db.getPosts(run.id);
     expect(posts.map((p) => p.id)).toEqual(['9', '1']);
   });
+
+  it('reports added only for genuinely new posts', async () => {
+    const run = makeRun();
+    await db.createRun(run);
+    const r1 = await db.upsertPosts(run.id, [makePost(1), makePost(2)]);
+    expect(r1.added).toBe(2);
+    expect(r1.changed).toBe(2);
+    const r2 = await db.upsertPosts(run.id, [makePost(1), makePost(2)]);
+    expect(r2.added).toBe(0);
+    expect(r2.changed).toBe(0);
+    expect(r2.count).toBe(2);
+  });
+
+  it('a richer rewrite does not increment added', async () => {
+    const run = makeRun();
+    await db.createRun(run);
+    await db.upsertPosts(run.id, [makePost(1, { text: 'short' })]);
+    const r = await db.upsertPosts(run.id, [makePost(1, {
+      text: 'a much longer version of this text'
+    })]);
+    expect(r.added).toBe(0);
+    expect(r.changed).toBe(1);
+    expect(r.count).toBe(1);
+  });
 });
 
 describe('thread jobs and deletion', () => {

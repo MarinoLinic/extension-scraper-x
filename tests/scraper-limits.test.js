@@ -78,3 +78,79 @@ describe('limit checks', () => {
     expect(c.elapsed()).toBeGreaterThanOrEqual(1900);
   });
 });
+
+describe('new-post accounting', () => {
+  const pm = XA.postModel;
+
+  function post(id, over = {}) {
+    return pm.normalizePost(Object.assign({
+      tweet_url: 'https://x.com/a/status/' + id,
+      text: 'hello ' + id,
+      timestamp_iso: '2024-01-01T00:00:00.000Z'
+    }, over));
+  }
+
+  function runnable(c) {
+    c.run = { id: 'run_t', source: { key: 'profile:a:posts', type: 'profile' }, runtime: {}, stats: { posts: 0 } };
+    return c;
+  }
+
+  it('re-extracting identical visible posts produces no batch', () => {
+    const c = controller();
+    expect(c.absorbBatch([post(1), post(2)])).toHaveLength(2);
+    expect(c.absorbBatch([post(1), post(2)])).toHaveLength(0);
+    expect(c.pendingPosts).toHaveLength(2);
+  });
+
+  it('a richer rewrite is persisted but does not count as a new post', async () => {
+    const c = runnable(controller());
+    let sent = 0;
+    c.sendToBackground = async () => {
+      sent++;
+      return { ok: true, added: 0, changed: 1, count: 1 };
+    };
+    c.absorbBatch([post(1)]);
+    c.lastAdded = 0;
+    await c.flushBatch();
+    c.absorbBatch([post(1, { text: 'a much longer text than before' })]);
+    expect(c.pendingPosts).toHaveLength(1);
+    await c.flushBatch();
+    expect(sent).toBe(2);
+    expect(c.lastAdded).toBe(0);
+    expect(c.postsSinceRest).toBe(0);
+  });
+
+  it('flush acknowledgement counts genuinely new posts', async () => {
+    const c = runnable(controller());
+    c.sendToBackground = async () => ({ ok: true, added: 2, changed: 2, count: 2 });
+    c.absorbBatch([post(1), post(2)]);
+    c.lastAdded = 0;
+    await c.flushBatch();
+    expect(c.lastAdded).toBe(2);
+    expect(c.persistedCount).toBe(2);
+  });
+
+  it('no flush means zero added for the tick', async () => {
+    const c = runnable(controller());
+    c.sendToBackground = async () => ({ ok: true, added: 9, changed: 9, count: 9 });
+    c.lastAdded = 0;
+    await c.flushBatch();
+    expect(c.lastAdded).toBe(0);
+  });
+
+  it('snapshot threshold starts from persisted count after reload', async () => {
+    const c = runnable(controller({ snapshotEveryPosts: 100 }));
+    let exported = 0;
+    c.sendToBackground = async () => { exported++; return { ok: true }; };
+    c.persistedCount = 80;
+    c.snapshotCount = c.persistedCount;
+    c.maybeSnapshot();
+    expect(exported).toBe(0);
+    c.persistedCount = 181;
+    c.maybeSnapshot();
+    expect(exported).toBe(1);
+    c.persistedCount = 200;
+    c.maybeSnapshot();
+    expect(exported).toBe(1);
+  });
+});

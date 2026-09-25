@@ -85,6 +85,36 @@ describe('merge richness policy', () => {
     expect(merged.thread_id).toBe('https://x.com/a/status/1');
     expect(merged.thread_scraped).toBe(true);
   });
+
+  it('returns the existing record unchanged for a semantically identical extraction', () => {
+    const incoming = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/1',
+      name: 'A', handle: '@a',
+      text: 'short',
+      images: ['https://img/1'],
+      links: [{ display: 'x', href: 'https://t.co/1' }],
+      metrics: { replies: 5, reposts: null, likes: 10, bookmarks: null, views: null },
+      capture_context: 'timeline',
+      timestamp_iso: '2024-01-01T00:00:00.000Z'
+    });
+    const merged = pm.mergePosts(base, incoming);
+    expect(merged).toEqual(base);
+    expect(merged.updated_at).toBe(base.updated_at);
+    expect(merged).toBe(base);
+  });
+
+  it('only bumps updated_at when another field actually changed', () => {
+    const richer = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/1',
+      text: 'a longer text than before',
+      timestamp_iso: '2024-01-01T00:00:00.000Z'
+    });
+    const merged = pm.mergePosts(base, richer);
+    expect(merged).not.toBe(base);
+    expect(merged.updated_at).not.toBe(base.updated_at);
+    const mergedAgain = pm.mergePosts(merged, richer);
+    expect(mergedAgain).toBe(merged);
+  });
 });
 
 describe('import compatibility', () => {

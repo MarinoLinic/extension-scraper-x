@@ -60,6 +60,57 @@ describe('HTML report safety', () => {
   });
 });
 
+describe('URL protocol allowlisting', () => {
+  const evil = pm.normalizePost({
+    tweet_url: 'https://x.com/a/status/1',
+    name: 'Eve', handle: '@eve',
+    avatar_url: 'data:text/html;base64,PHNjcmlwdD4=',
+    text: 'payloads',
+    is_thread: true,
+    thread_id: 'javascript:alert(1)',
+    images: ['javascript:alert(2)', 'https://pbs.twimg.com/media/OK.jpg'],
+    videos: ['javascript:alert(3)'],
+    link_card: { url: 'javascript:alert(4)', title: 'evil card', image: 'data:text/html;base64,AAAA' },
+    quote_context: {
+      quoted_author_name: 'q',
+      quoted_tweet_url: 'javascript:alert(5)',
+      quoted_text: 'quoted',
+      quoted_images: ['javascript:alert(6)'],
+      quoted_videos: ['data:text/html;base64,BBBB']
+    },
+    media: [
+      { url: 'javascript:alert(7)', type: 'image' },
+      { url: 'javascript:alert(8)', type: 'video', poster: 'javascript:alert(9)', permalink: 'javascript:alert(10)' }
+    ],
+    replying_to: [{ handle: '@mallory', profile_url: 'javascript:alert(11)' }],
+    timestamp_iso: '2024-01-01T00:00:00.000Z'
+  });
+  const html = renderHtmlReport(run, [evil]);
+
+  it('emits no executable javascript/data URLs in href, src or fallback attributes', () => {
+    expect(html).not.toMatch(/href="javascript:/i);
+    expect(html).not.toMatch(/src="javascript:/i);
+    expect(html).not.toMatch(/href="data:/i);
+    expect(html).not.toMatch(/src="data:(?!image\/)/i);
+    expect(html).not.toMatch(/data-remote="javascript:/i);
+  });
+
+  it('never falls back to "#" for a rejected card URL', () => {
+    expect(html).not.toContain('href="#"');
+    expect(html).toContain('evil card');
+  });
+
+  it('keeps safe https media and images intact', () => {
+    expect(html).toContain('src="https://pbs.twimg.com/media/OK.jpg"');
+    expect(html).toContain('href="https://pbs.twimg.com/media/OK.jpg"');
+  });
+
+  it('renders rejected video/image URLs as non-clickable text or omits them', () => {
+    expect(html).not.toContain('data:text/html');
+    expect(html).toContain('no durable URL');
+  });
+});
+
 describe('offline media rewriting', () => {
   it('rewrites downloaded images to local paths and keeps remote fallback', () => {
     const html = renderHtmlReport(run, [hostile], {

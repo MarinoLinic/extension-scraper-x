@@ -235,7 +235,12 @@
     }
     let claimed = false;
     const run = await XA.db.patchRun(runId, (r) => {
-      r.state = msg.state || r.state;
+      const incoming = msg.state;
+      const runFinished = !XA.messages.UNFINISHED_STATES.includes(r.state);
+      const staleRunning = r.state === 'paused' &&
+        XA.messages.UNFINISHED_STATES.includes(incoming);
+      const resurrecting = runFinished && XA.messages.UNFINISHED_STATES.includes(incoming);
+      if (incoming && !staleRunning && !resurrecting) r.state = incoming;
       if (msg.stopReason) r.stopReason = msg.stopReason;
       if (['completed', 'limited', 'error'].includes(msg.state)) r.completedAt = XA.util.nowIso();
       r.runtime = Object.assign({}, r.runtime, msg.runtime || {});

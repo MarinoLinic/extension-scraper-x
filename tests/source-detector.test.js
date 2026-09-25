@@ -45,6 +45,15 @@ describe('source detection', () => {
     expect(s.key).toBe('list:987654');
   });
 
+  it('detects the /<handle>/lists/<id> route with the same stable key', () => {
+    const s = detect('/alice/lists/987654');
+    expect(s.supported).toBe(true);
+    expect(s.type).toBe('list');
+    expect(s.key).toBe('list:987654');
+    expect(s.key).toBe(detect('/i/lists/987654').key);
+    expect(detect('/alice/lists').supported).toBe(false);
+  });
+
   it('detects search with query', () => {
     const s = detect('/search', '?q=cats%20dogs&src=typed_query');
     expect(s.supported).toBe(true);
