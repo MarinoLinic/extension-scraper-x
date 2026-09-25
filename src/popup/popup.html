@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header class="xar-head">
+  <img src="../../assets/icons/icon-32.png" alt="" width="20" height="20">
+  <span class="xar-title">X Archive</span>
+  <span class="xar-badge" id="xar-state"></span>
+</header>
+
+<section id="xar-source" class="xar-card">
+  <div class="xar-src-line"><span id="xar-src-icon" class="xar-dot"></span><strong id="xar-src-label">…</strong><span id="xar-src-kind" class="xar-kind"></span></div>
+  <div class="xar-src-sub" id="xar-src-sub"></div>
+  <div class="xar-warning" id="xar-unsupported" hidden></div>
+</section>
+
+<section id="xar-progress" class="xar-card" hidden>
+  <div class="xar-row"><span>Posts</span><strong id="xar-count">0</strong></div>
+  <div class="xar-row"><span>Active time</span><span id="xar-elapsed">—</span></div>
+  <div class="xar-row" id="xar-rest-row" hidden><span>Rest ends in</span><span id="xar-rest"></span></div>
+  <div class="xar-row"><span>Last saved</span><span id="xar-saved">—</span></div>
+  <div class="xar-row"><span>Stop reason</span><span id="xar-stopreason">—</span></div>
+  <div class="xar-warning" id="xar-msg" hidden></div>
+</section>
+
+<section class="xar-controls">
+  <button id="xar-start" class="primary">Start</button>
+  <button id="xar-pause">Pause</button>
+  <button id="xar-resume">Resume</button>
+  <button id="xar-stop">Stop</button>
+</section>
+
+<section class="xar-controls secondary">
+  <button id="xar-export">Export</button>
+  <button id="xar-mediazip" hidden>Media ZIP</button>
+  <button id="xar-archives">Archives</button>
+  <button id="xar-settings">Settings</button>
+</section>
+
+<div class="xar-footer" id="xar-status"></div>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

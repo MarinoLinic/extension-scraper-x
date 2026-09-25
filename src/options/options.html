@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X Archive — Settings & Archives</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<header class="top">
+  <img src="../../assets/icons/icon-48.png" alt="" width="28" height="28">
+  <h1>X Archive</h1>
+  <nav>
+    <a href="#settings" data-tab="settings">Settings</a>
+    <a href="#archives" data-tab="archives">Archives</a>
+  </nav>
+</header>
+
+<main>
+<section id="view-settings" class="view">
+  <h2>Settings</h2>
+  <p class="note">Every captured batch is written to the local archive database before the page
+  scrolls — that checkpoint is always on and is what survives tab reloads and browser restarts.
+  The options below control pacing, limits, exports, filenames, and optional media downloads.</p>
+  <div id="settings-form"></div>
+  <div class="form-actions">
+    <button id="settings-save" class="primary">Save settings</button>
+    <button id="settings-reset">Reset to defaults</button>
+    <span id="settings-status" class="status"></span>
+  </div>
+</section>
+
+<section id="view-archives" class="view" hidden>
+  <h2>Archives</h2>
+  <div class="arch-toolbar">
+    <input type="search" id="arch-search" placeholder="Search label or source key…">
+    <select id="arch-type">
+      <option value="">All types</option>
+      <option value="profile">Profile</option>
+      <option value="bookmarks">Bookmarks</option>
+      <option value="list">List</option>
+      <option value="search">Search</option>
+      <option value="timeline">Timeline</option>
+    </select>
+    <select id="arch-state">
+      <option value="">All states</option>
+      <option value="running">Running</option>
+      <option value="resting">Resting</option>
+      <option value="paused">Paused</option>
+      <option value="completed">Completed</option>
+      <option value="limited">Limited</option>
+      <option value="error">Error</option>
+    </select>
+    <label class="import-label">Import JSON <input type="file" id="arch-import" accept=".json,application/json" hidden></label>
+    <span id="arch-usage" class="usage"></span>
+  </div>
+  <p class="note warn">Archives live in this extension's local storage. Uninstalling the extension
+  deletes them permanently — export anything you want to keep.</p>
+  <div class="arch-layout">
+    <div id="arch-list" class="arch-list"></div>
+    <div id="arch-detail" class="arch-detail"><p class="note">Select an archive to see details.</p></div>
+  </div>
+</section>
+</main>
+
+<script type="module" src="options.js"></script>
+</body>
+</html>

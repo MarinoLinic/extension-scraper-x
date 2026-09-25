@@ -1,0 +1,52 @@
+<div data-testid="primaryColumn">
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/alice" role="link"><div><span>Alice Author</span></div></a>
+      <a href="/alice"><div><span>@alice</span></div></a>
+    </div>
+  </div>
+  <div data-testid="tweetText"><span>thread part one of three 1/3</span></div>
+  <time datetime="2024-05-10T10:00:00.000Z">May 10, 2024</time>
+  <div role="group" aria-label="2 replies"></div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/alice" role="link"><div><span>Alice Author</span></div></a>
+      <a href="/alice"><div><span>@alice</span></div></a>
+    </div>
+  </div>
+  <div><span>Replying to <a href="/alice">@alice</a></span></div>
+  <div data-testid="tweetText"><span>thread part two 2/3</span></div>
+  <a href="/alice/status/3000000000000000002"><time datetime="2024-05-10T10:02:00.000Z">May 10, 2024</time></a>
+  <div role="group" aria-label="1 reply"></div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/mallory" role="link"><div><span>Mallory</span></div></a>
+      <a href="/mallory"><div><span>@mallory</span></div></a>
+    </div>
+  </div>
+  <div><span>Replying to <a href="/alice">@alice</a></span></div>
+  <div data-testid="tweetText"><span>third party reply that must be dropped</span></div>
+  <a href="/mallory/status/3000000000000000099"><time datetime="2024-05-10T10:05:00.000Z">May 10, 2024</time></a>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/alice" role="link"><div><span>Alice Author</span></div></a>
+      <a href="/alice"><div><span>@alice</span></div></a>
+    </div>
+  </div>
+  <div><span>Replying to <a href="/alice">@alice</a></span></div>
+  <div data-testid="tweetText"><span>thread part three 3/3</span></div>
+  <a href="/alice/status/3000000000000000003"><time datetime="2024-05-10T10:04:00.000Z">May 10, 2024</time></a>
+</article>
+
+</div>

@@ -1,0 +1,42 @@
+:host { all: initial; }
+.panel {
+  width: 250px;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #e7e9ea;
+  background: rgba(22, 24, 28, 0.95);
+  border: 1px solid #38444d;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #38444d;
+  font-weight: 700;
+}
+.head .btns button { margin-left: 4px; }
+.body { padding: 8px 10px; }
+.row { display: flex; justify-content: space-between; margin: 2px 0; }
+.label { color: #8b98a5; }
+.controls { display: flex; gap: 6px; padding: 0 10px 10px; }
+button {
+  font: inherit;
+  font-size: 12px;
+  color: #e7e9ea;
+  background: #2f3336;
+  border: 1px solid #536471;
+  border-radius: 8px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+button:hover { background: #38444d; }
+.state { font-weight: 700; }
+.state.running { color: #1d9bf0; }
+.state.resting { color: #f4a41c; }
+.state.paused { color: #ffd400; }
+.state.completed { color: #17bf63; }
+.state.error, .state.limited { color: #e0245e; }
+.msg { color: #f4a41c; margin-top: 4px; max-height: 60px; overflow: hidden; }
+.collapsed .body, .collapsed .controls { display: none; }

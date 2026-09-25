@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "X Archive",
+  "version": "1.0.0",
+  "minimum_chrome_version": "116",
+  "description": "Archive X timelines to durable local storage; export JSON, HTML reports, and optional media ZIPs. Local-only, no external services.",
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "X Archive",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "options_page": "src/options/options.html",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "downloads",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://pbs.twimg.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "run_at": "document_idle",
+      "js": [
+        "src/content/namespace.js",
+        "src/shared/util.js",
+        "src/shared/messages.js",
+        "src/shared/post-model.js",
+        "src/content/source-detector.js",
+        "src/content/extractor.js",
+        "src/content/overlay.js",
+        "src/content/scraper-controller.js",
+        "src/content/thread-controller.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/content/overlay.css"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+<div data-testid="primaryColumn">
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/alice" role="link"><div><span>Alice Author</span></div></a>
+      <a href="/alice"><div><span>@alice</span></div></a>
+    </div>
+  </div>
+  <div data-testid="Tweet-User-Avatar"><img src="https://pbs.twimg.com/profile_images/111_normal.png" alt=""></div>
+  <div data-testid="tweetText"><span>Hello timeline world </span><a href="https://t.co/xyz">example.com/article</a></div>
+  <a href="/alice/status/1000000000000000001"><time datetime="2024-05-01T10:00:00.000Z">May 1, 2024</time></a>
+  <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/MAINIMG1?format=jpg&amp;name=small" alt="an attached photo"></div>
+  <div role="group" aria-label="12 replies, 34 reposts, 56 likes, 7 bookmarks, 890 views">
+    <button data-testid="reply" aria-label="12 replies"></button>
+    <button data-testid="retweet" aria-label="34 reposts"></button>
+    <button data-testid="like" aria-label="56 likes"></button>
+    <button data-testid="bookmark" aria-label="7 bookmarks"></button>
+  </div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/bob" role="link"><div><span>Bob</span></div></a>
+      <a href="/bob"><div><span>@bob</span></div></a>
+    </div>
+  </div>
+  <div><span>Replying to <a href="/alice">@alice</a> <a href="/carol">@carol</a></span></div>
+  <div data-testid="tweetText"><span>a reply here</span></div>
+  <a href="/bob/status/1000000000000000002"><time datetime="2024-05-01T11:00:00.000Z">May 1, 2024</time></a>
+  <div role="group" aria-label="1 reply"></div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/carol" role="link"><div><span>Carol</span></div></a>
+      <a href="/carol"><div><span>@carol</span></div></a>
+    </div>
+  </div>
+  <div data-testid="socialContext"><span>Bob reposted</span></div>
+  <div data-testid="tweetText"><span>check this out</span></div>
+  <a href="/carol/status/1000000000000000003"><time datetime="2024-05-02T09:00:00.000Z">May 2, 2024</time></a>
+  <div role="link" tabindex="0">
+    <div data-testid="User-Name">
+      <div>
+        <a href="/dan" role="link"><div><span>Dan</span></div></a>
+        <a href="/dan"><div><span>@dan</span></div></a>
+      </div>
+    </div>
+    <div data-testid="tweetText"><span>quoted content goes here</span></div>
+    <a href="/dan/status/2000000000000000009"><time datetime="2024-04-30T08:00:00.000Z">Apr 30, 2024</time></a>
+    <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/QUOTEDIMG?format=jpg&amp;name=small" alt=""></div>
+  </div>
+  <div data-testid="tweetPhoto"><img src="https://pbs.twimg.com/media/MAINIMG2?format=jpg&amp;name=small" alt=""></div>
+  <div role="group" aria-label="3 replies, 5 reposts"></div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/erin" role="link"><div><span>Erin</span></div></a>
+      <a href="/erin"><div><span>@erin</span></div></a>
+    </div>
+  </div>
+  <div data-testid="tweetText"><span>great read on the topic 1/5</span></div>
+  <a href="/erin/status/1000000000000000004"><time datetime="2024-05-03T12:00:00.000Z">May 3, 2024</time></a>
+  <div data-testid="card.wrapper">
+    <a href="https://t.co/cardabc" aria-label="An Example Site Article">
+      <img src="https://pbs.twimg.com/card_img/555" alt="">
+    </a>
+  </div>
+  <div data-testid="videoPlayer">
+    <video poster="https://pbs.twimg.com/ext_tw_video_thumb/999.jpg" src="blob:https://x.com/1111-2222"></video>
+    <a href="/erin/status/1000000000000000004/video/1"></a>
+  </div>
+  <div role="group" aria-label="5 replies, 1.2K reposts, 3.4K likes, 12 bookmarks, 2M views"></div>
+</article>
+
+<article data-testid="tweet">
+  <div data-testid="User-Name">
+    <div>
+      <a href="/frank" role="link"><div><span>Frank</span></div></a>
+      <a href="/frank"><div><span>@frank</span></div></a>
+    </div>
+  </div>
+  <div data-testid="tweetText"><span>no metrics rendered for this one</span></div>
+  <a href="/frank/status/1000000000000000005"><time datetime="2024-05-04T15:00:00.000Z">May 4, 2024</time></a>
+</article>
+
+</div>
