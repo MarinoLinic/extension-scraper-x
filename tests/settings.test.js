@@ -70,6 +70,11 @@ describe('settings validation', () => {
     const ok = validateSettings({ oldestDate: '2024-01-15', maxActiveDurationMs: 60000 });
     expect(ok.settings.oldestDate).toBe('2024-01-15');
     expect(ok.settings.maxActiveDurationMs).toBe(60000);
+    const impossible = validateSettings({ oldestDate: '2024-02-31' });
+    expect(impossible.errors.oldestDate).toBeTruthy();
+    const leap = validateSettings({ oldestDate: '2024-02-29' });
+    expect(leap.errors.oldestDate).toBeUndefined();
+    expect(leap.settings.oldestDate).toBe('2024-02-29');
   });
 
   it('requires at least one export format', () => {

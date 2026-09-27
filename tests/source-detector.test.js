@@ -93,4 +93,12 @@ describe('source detection', () => {
   it('produces stable keys regardless of handle case', () => {
     expect(detect('/ALICE').key).toBe(detect('/alice').key);
   });
+
+  it('rejects malformed percent-encoding without throwing', () => {
+    let s;
+    expect(() => { s = detect('/%E0%A4%A'); }).not.toThrow();
+    expect(s.supported).toBe(false);
+    expect(s.sourceUrl).toBe('https://x.com/%E0%A4%A');
+    expect(s.reason).toMatch(/invalid path encoding/i);
+  });
 });

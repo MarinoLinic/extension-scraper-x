@@ -121,6 +121,9 @@
   async function pauseRun(msg) {
     const run = await XA.db.getRun(msg.runId);
     if (!run) return { ok: false, error: 'run not found' };
+    if (!XA.messages.UNFINISHED_STATES.includes(run.state)) {
+      return { ok: false, error: 'run is already finished' };
+    }
     if (run.tabId != null) {
       await sendToTab(run.tabId, { type: M().XAR_CONTROL, action: 'pause' }).catch(() => {});
     }

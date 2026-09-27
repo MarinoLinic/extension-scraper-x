@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { XA } from './helpers/load.js';
 import '../src/background/export-service.js';
 
@@ -48,5 +48,54 @@ describe('export format normalization', () => {
     const plan = planFormats(['json'], false, false);
     expect(plan.formats).toEqual(['json']);
     expect(plan.mediaWarning).toBeNull();
+  });
+});
+
+describe('offscreen and download lifecycle', () => {
+  it('creates the offscreen document once for concurrent ensureOffscreen calls', async () => {
+    const prev = globalThis.chrome;
+    let resolveCreate;
+    const createDocument = vi.fn(
+      () => new Promise((resolve) => { resolveCreate = resolve; }));
+    globalThis.chrome = {
+      runtime: {
+        lastError: null,
+        getURL: (p) => 'chrome-extension://test/' + p,
+        getContexts: async () => []
+      },
+      offscreen: { createDocument }
+    };
+    try {
+      const first = XA.exportService.ensureOffscreen();
+      const second = XA.exportService.ensureOffscreen();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      resolveCreate();
+      await Promise.all([first, second]);
+      expect(createDocument).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.chrome = prev;
+    }
+  });
+
+  it('rejects downloadOne when the download is interrupted', async () => {
+    const prev = globalThis.chrome;
+    globalThis.chrome = {
+      runtime: {
+        lastError: null,
+        getURL: (p) => 'chrome-extension://test/' + p
+      },
+      downloads: {
+        download: (opts, cb) => cb(123)
+      }
+    };
+    try {
+      const pending = XA.exportService.downloadOne(
+        { url: 'blob:test/abc', filename: 'x.json' }, false);
+      const assertion = expect(pending).rejects.toThrow(/interrupted/);
+      XA.exportService.onDownloadChanged({ id: 123, state: { current: 'interrupted' } });
+      await assertion;
+    } finally {
+      globalThis.chrome = prev;
+    }
   });
 });

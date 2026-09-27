@@ -5,6 +5,8 @@
 
   const OFFSCREEN_URL = 'src/offscreen/offscreen.html';
   const pendingDownloads = new Map();
+  let creatingOffscreen = null;
+  let activeExports = 0;
 
   async function hasOffscreen() {
     try {
@@ -22,17 +24,26 @@
 
   async function ensureOffscreen() {
     if (await hasOffscreen()) return;
-    const create = chrome.offscreen.createDocument({
-      url: OFFSCREEN_URL,
-      reasons: ['BLOBS'],
-      justification: 'Generate archive export files (JSON, HTML, media ZIP) as downloadable Blobs'
-    });
-    await Promise.race([create, new Promise((_, rej) => setTimeout(() => rej(new Error('offscreen timeout')), 15000))]);
+    if (!creatingOffscreen) {
+      const create = chrome.offscreen.createDocument({
+        url: OFFSCREEN_URL,
+        reasons: ['BLOBS'],
+        justification: 'Generate archive export files (JSON, HTML, media ZIP) as downloadable Blobs'
+      });
+      creatingOffscreen = Promise.race([
+        create,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('offscreen timeout')), 15000))
+      ]).finally(() => { creatingOffscreen = null; });
+    }
+    await creatingOffscreen;
   }
 
   async function closeOffscreenSoon() {
     try {
-      if (await hasOffscreen()) await chrome.offscreen.closeDocument();
+      if (activeExports || pendingDownloads.size) return;
+      if (await hasOffscreen() && !activeExports && !pendingDownloads.size) {
+        await chrome.offscreen.closeDocument();
+      }
     } catch (_) { /* ignore */ }
   }
 
@@ -63,7 +74,6 @@
     if (state === 'complete' || state === 'interrupted') {
       pendingDownloads.get(delta.id)(state);
       pendingDownloads.delete(delta.id);
-      if (!pendingDownloads.size) closeOffscreenSoon();
     }
   }
 
@@ -83,7 +93,13 @@
           const err = chrome.runtime.lastError;
           if (err) { reject(new Error(err.message)); return; }
           if (id == null) { reject(new Error('download did not start')); return; }
-          trackDownload(id).then((state) => resolve({ id, state, filename: file.filename }));
+          trackDownload(id).then((state) => {
+            if (state === 'interrupted') {
+              reject(new Error('download was interrupted: ' + file.filename));
+              return;
+            }
+            resolve({ id, state, filename: file.filename });
+          });
         });
       } catch (e) { reject(e); }
     });
@@ -125,61 +141,65 @@
   }
 
   async function exportRun(runId, formats, opts) {
-    const o = opts || {};
-    const wantsMedia = !!o.media || normalizeFormats(formats).includes('mediazip');
-    const plan = planFormats(
-      formats, wantsMedia, wantsMedia ? await hasMediaPermission() : false);
-    if (plan.error) return { ok: false, error: plan.error };
-    const jobFormats = plan.formats;
-    const mediaWarning = plan.mediaWarning;
-    const run = await XA.db.getRun(runId);
-    if (!run) return { ok: false, error: 'run not found' };
-    const settings = run.settings || await XA.settings.loadSettings();
-    const job = {
-      id: XA.util.uid('export'),
-      runId,
-      kind: jobFormats.length ? jobFormats.join('+') : 'export',
-      state: 'pending',
-      files: [],
-      error: null,
-      createdAt: XA.util.nowIso(),
-      updatedAt: XA.util.nowIso()
-    };
-    await XA.db.putExportJob(job);
+    activeExports += 1;
     try {
-      await ensureOffscreen();
-      const template = (settings.filenameTemplate) || 'x_%type_%handle_%date_%num';
-      const resp = await sendToOffscreen({
-        type: M().XAR_OFFSCREEN_EXPORT,
-        jobId: job.id,
-        runId: run.id,
-        formats: jobFormats,
-        template,
-        mediaSettings: settings.media,
-        snapshot: !!o.snapshot
-      }, jobFormats.includes('mediazip') ? 300000 : 120000);
-      if (!resp || resp.ok === false) {
-        throw new Error((resp && resp.error) || 'offscreen export failed');
-      }
-      const results = [];
-      for (const file of resp.files || []) {
-        results.push(await downloadOne(file, o.saveAs != null ? o.saveAs : settings.saveAs));
-      }
-      job.state = 'done';
-      job.files = results.map((r) => r.filename);
-      job.updatedAt = XA.util.nowIso();
+      const o = opts || {};
+      const wantsMedia = !!o.media || normalizeFormats(formats).includes('mediazip');
+      const plan = planFormats(
+        formats, wantsMedia, wantsMedia ? await hasMediaPermission() : false);
+      if (plan.error) return { ok: false, error: plan.error };
+      const jobFormats = plan.formats;
+      const mediaWarning = plan.mediaWarning;
+      const run = await XA.db.getRun(runId);
+      if (!run) return { ok: false, error: 'run not found' };
+      const settings = run.settings || await XA.settings.loadSettings();
+      const job = {
+        id: XA.util.uid('export'),
+        runId,
+        kind: jobFormats.length ? jobFormats.join('+') : 'export',
+        state: 'pending',
+        files: [],
+        error: null,
+        createdAt: XA.util.nowIso(),
+        updatedAt: XA.util.nowIso()
+      };
       await XA.db.putExportJob(job);
-      const done = { ok: true, files: job.files, mediaSummary: resp.mediaSummary || null };
-      if (mediaWarning) done.mediaWarning = mediaWarning;
-      return done;
-    } catch (e) {
-      job.state = 'failed';
-      job.error = String(e && e.message || e);
-      job.updatedAt = XA.util.nowIso();
-      await XA.db.putExportJob(job);
-      return { ok: false, error: job.error };
+      try {
+        await ensureOffscreen();
+        const template = (settings.filenameTemplate) || 'x_%type_%handle_%date_%num';
+        const resp = await sendToOffscreen({
+          type: M().XAR_OFFSCREEN_EXPORT,
+          jobId: job.id,
+          runId: run.id,
+          formats: jobFormats,
+          template,
+          mediaSettings: settings.media,
+          snapshot: !!o.snapshot
+        }, jobFormats.includes('mediazip') ? 300000 : 120000);
+        if (!resp || resp.ok === false) {
+          throw new Error((resp && resp.error) || 'offscreen export failed');
+        }
+        const results = [];
+        for (const file of resp.files || []) {
+          results.push(await downloadOne(file, o.saveAs != null ? o.saveAs : settings.saveAs));
+        }
+        job.state = 'done';
+        job.files = results.map((r) => r.filename);
+        job.updatedAt = XA.util.nowIso();
+        await XA.db.putExportJob(job);
+        const done = { ok: true, files: job.files, mediaSummary: resp.mediaSummary || null };
+        if (mediaWarning) done.mediaWarning = mediaWarning;
+        return done;
+      } catch (e) {
+        job.state = 'failed';
+        job.error = String(e && e.message || e);
+        job.updatedAt = XA.util.nowIso();
+        await XA.db.putExportJob(job);
+        return { ok: false, error: job.error };
+      }
     } finally {
-      if (!pendingDownloads.size) closeOffscreenSoon();
+      activeExports -= 1;
+      if (!activeExports && !pendingDownloads.size) await closeOffscreenSoon();
     }
   }
 

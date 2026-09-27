@@ -203,6 +203,17 @@ describe('explicit resume moves ownership', () => {
   });
 });
 
+describe('pause of a finished run', () => {
+  it('rejects without messaging the tab or changing stored state', async () => {
+    const run = makeRun({ state: 'completed', tabId: 10 });
+    await db.createRun(run);
+    const resp = await rs.pauseRun({ runId: run.id });
+    expect(resp).toEqual({ ok: false, error: 'run is already finished' });
+    expect(sent).toHaveLength(0);
+    expect((await db.getRun(run.id)).state).toBe('completed');
+  });
+});
+
 describe('stale-tab and missing-run rejection', () => {
   it('rejects upserts from a tab that no longer owns the run', async () => {
     const run = makeRun({ tabId: 10 });

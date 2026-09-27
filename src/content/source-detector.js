@@ -48,8 +48,13 @@
     const i = input || {};
     const path = String(i.pathname || '/').replace(/\/+$/, '') || '/';
     const search = String(i.search || '');
-    const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
     const sourceUrl = 'https://x.com' + path + (i.includeSearch === false ? '' : search);
+    let segs;
+    try {
+      segs = path.split('/').filter(Boolean).map(decodeURIComponent);
+    } catch (_) {
+      return makeSource({ sourceUrl, reason: 'This URL contains invalid path encoding' });
+    }
 
     for (const [prefix, reason] of REJECT_PREFIXES) {
       if (path === prefix || path.startsWith(prefix + '/')) {
