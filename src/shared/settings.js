@@ -100,11 +100,6 @@
       else settings.exportFormats = fmts;
     }
 
-    if (src.jsonFormat !== undefined) {
-      if (src.jsonFormat === 'envelope' || src.jsonFormat === 'legacy') settings.jsonFormat = src.jsonFormat;
-      else errors.jsonFormat = 'Must be "envelope" or "legacy"';
-    }
-
     if (src.filenameTemplate !== undefined) {
       const t = String(src.filenameTemplate).trim();
       if (!t) errors.filenameTemplate = 'Template may not be empty';
@@ -167,7 +162,12 @@
     const got = await area.get(STORAGE_KEY_SETTINGS);
     const saved = got[STORAGE_KEY_SETTINGS];
     if (!saved || typeof saved !== 'object') return Object.assign({}, DEFAULT_SETTINGS);
-    const merged = Object.assign({}, DEFAULT_SETTINGS, saved);
+    const merged = {};
+    for (const key of Object.keys(DEFAULT_SETTINGS)) {
+      merged[key] = Object.prototype.hasOwnProperty.call(saved, key)
+        ? saved[key]
+        : DEFAULT_SETTINGS[key];
+    }
     merged.media = Object.assign({}, DEFAULT_SETTINGS.media, saved.media || {});
     return merged;
   }

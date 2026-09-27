@@ -52,6 +52,31 @@
   <button id="xar-settings">Settings</button>
 </section>
 
+<details class="xar-quick" open>
+  <summary>Quick settings</summary>
+  <div class="xar-q-grid">
+    <label class="xar-q-row"><span>Preset</span><select id="xar-q-preset"></select></label>
+    <label class="xar-q-row"><span>Max active minutes</span><input id="xar-q-max-minutes" type="number" min="1" placeholder="no limit"></label>
+    <label class="xar-q-row"><span>Max posts</span><input id="xar-q-max-posts" type="number" min="1" placeholder="no limit"></label>
+    <label class="xar-q-row"><span>Oldest date</span><input id="xar-q-oldest-date" type="date"></label>
+    <div class="xar-q-row"><span>Export formats</span>
+      <span class="xar-q-checks">
+        <label><input type="checkbox" id="xar-q-fmt-json"> JSON</label>
+        <label><input type="checkbox" id="xar-q-fmt-html"> HTML</label>
+      </span>
+    </div>
+    <label class="xar-q-row"><span>Snapshot every N posts</span><input id="xar-q-snapshot" type="number" min="10" placeholder="off"></label>
+    <label class="xar-q-row"><span>Filename template</span><input id="xar-q-filename" type="text"></label>
+    <label class="xar-q-row check"><input type="checkbox" id="xar-q-mediazip"><span>Download a media ZIP after the final export</span></label>
+  </div>
+  <div class="xar-q-actions">
+    <button id="xar-q-save" class="primary">Save</button>
+    <button id="xar-q-reset">Reset to defaults</button>
+    <span id="xar-q-status" class="xar-q-status"></span>
+  </div>
+  <div class="xar-q-desc">Full settings live on the Settings page.</div>
+</details>
+
 <div class="xar-footer" id="xar-status"></div>
 <script type="module" src="popup.js"></script>
 </body>

@@ -1,6 +1,7 @@
 import '../shared/util.js';
 import '../shared/messages.js';
 import '../shared/defaults.js';
+import '../shared/settings.js';
 
 const XA = globalThis.XArchive;
 const M = XA.messages.MSG;
@@ -14,6 +15,8 @@ const SOURCE_LABELS = {
 
 let ctx = null;
 let tabId = null;
+let quickSettings = null;
+let quickInit = false;
 
 function send(msg) {
   return chrome.runtime.sendMessage(msg);
@@ -101,6 +104,10 @@ async function refresh() {
       setStatus((ctx && ctx.error) || 'No context');
       return;
     }
+    if (!quickInit) {
+      quickInit = true;
+      await initQuickSettings();
+    }
     render();
   } finally {
     refreshing = false;
@@ -114,6 +121,106 @@ function startRefreshLoop() {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }, { once: true });
+}
+
+function populatePresetSelect() {
+  const sel = $('xar-q-preset');
+  sel.textContent = '';
+  for (const key of Object.keys(XA.defaults.PRESETS)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = XA.defaults.PRESETS[key].label || key;
+    sel.appendChild(opt);
+  }
+}
+
+function fillQuickForm(s) {
+  quickSettings = Object.assign({}, s, { media: Object.assign({}, (s && s.media) || {}) });
+  $('xar-q-preset').value = s.preset || 'balanced';
+  $('xar-q-max-minutes').value = s.maxActiveDurationMs == null ? '' : Math.round(s.maxActiveDurationMs / 60000);
+  $('xar-q-max-posts').value = s.maxPosts == null ? '' : s.maxPosts;
+  $('xar-q-oldest-date').value = s.oldestDate || '';
+  $('xar-q-fmt-json').checked = (s.exportFormats || []).includes('json');
+  $('xar-q-fmt-html').checked = (s.exportFormats || []).includes('html');
+  $('xar-q-snapshot').value = s.snapshotEveryPosts == null ? '' : s.snapshotEveryPosts;
+  $('xar-q-filename').value = s.filenameTemplate || '';
+  $('xar-q-mediazip').checked = !!s.autoMediaZip;
+}
+
+async function initQuickSettings() {
+  populatePresetSelect();
+  let s = ctx && ctx.settings;
+  if (!s) {
+    try {
+      s = (await send({ type: M.GET_SETTINGS })).settings;
+    } catch (_) {
+      s = null;
+    }
+  }
+  fillQuickForm(s || XA.defaults.DEFAULT_SETTINGS);
+}
+
+function setQuickStatus(text) {
+  $('xar-q-status').textContent = text || '';
+}
+
+async function saveQuickSettings() {
+  const formats = [];
+  if ($('xar-q-fmt-json').checked) formats.push('json');
+  if ($('xar-q-fmt-html').checked) formats.push('html');
+  if (!formats.length) {
+    setQuickStatus('Pick at least one export format');
+    return;
+  }
+  let next = Object.assign({}, quickSettings || XA.defaults.DEFAULT_SETTINGS);
+  next.media = Object.assign({}, next.media || {});
+  next.exportFormats = (next.exportFormats || []).slice();
+  const preset = $('xar-q-preset').value;
+  if (preset !== next.preset) next = XA.settings.applyPreset(next, preset);
+
+  const minutes = $('xar-q-max-minutes').value;
+  next.maxActiveDurationMs = minutes === '' ? null : Math.round(Number(minutes) * 60000);
+  const maxPosts = $('xar-q-max-posts').value;
+  next.maxPosts = maxPosts === '' ? null : Number(maxPosts);
+  next.oldestDate = $('xar-q-oldest-date').value || null;
+  next.exportFormats = formats;
+  const snap = $('xar-q-snapshot').value;
+  next.snapshotEveryPosts = snap === '' ? null : Number(snap);
+  next.filenameTemplate = $('xar-q-filename').value;
+  next.autoMediaZip = $('xar-q-mediazip').checked;
+
+  let mediaDenied = false;
+  if (next.autoMediaZip && !(await ensureMediaPermission())) {
+    next.autoMediaZip = false;
+    mediaDenied = true;
+  }
+  const resp = await send({ type: M.SAVE_SETTINGS, settings: next });
+  if (resp && resp.ok) {
+    fillQuickForm(resp.settings);
+    const errs = resp.errors && Object.keys(resp.errors).length
+      ? ' — ' + Object.values(resp.errors).join('; ') : '';
+    setQuickStatus((mediaDenied
+      ? 'Saved — media permission denied, media ZIP stays off' : 'Saved') + errs);
+  } else {
+    setQuickStatus('Save failed');
+  }
+  setTimeout(() => setQuickStatus(''), 5000);
+}
+
+async function resetQuickSettings() {
+  const d = XA.defaults.DEFAULT_SETTINGS;
+  const next = Object.assign({}, d, {
+    media: Object.assign({}, d.media),
+    exportFormats: (d.exportFormats || []).slice()
+  });
+  const resp = await send({ type: M.SAVE_SETTINGS, settings: next });
+  if (resp && resp.ok) {
+    fillQuickForm(resp.settings);
+    setQuickStatus('Reset to defaults');
+  } else {
+    setQuickStatus('Reset failed');
+  }
+  setTimeout(() => setQuickStatus(''), 5000);
 }
 
 async function ensureMediaPermission() {
@@ -182,8 +289,11 @@ function wire() {
     await send({ type: M.OPEN_ARCHIVE_PAGE, runId: ctx.run ? ctx.run.id : null });
   });
   $('xar-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+  $('xar-q-save').addEventListener('click', () => { saveQuickSettings().catch(() => setQuickStatus('Save failed')); });
+  $('xar-q-reset').addEventListener('click', () => { resetQuickSettings().catch(() => setQuickStatus('Reset failed')); });
 }
 
 wire();
+populatePresetSelect();
 refresh();
 startRefreshLoop();

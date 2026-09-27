@@ -97,18 +97,48 @@
     }
   }
 
+  function normalizeFormats(formats) {
+    const out = [];
+    for (const f of (Array.isArray(formats) ? formats : [])) {
+      if ((f === 'json' || f === 'html' || f === 'mediazip') && !out.includes(f)) {
+        out.push(f);
+      }
+    }
+    return out;
+  }
+
+  function planFormats(formats, wantsMedia, hasPermission) {
+    const list = normalizeFormats(formats);
+    let mediaWarning = null;
+    if (wantsMedia) {
+      if (hasPermission) {
+        if (!list.includes('mediazip')) list.push('mediazip');
+      } else {
+        const rest = list.filter((f) => f !== 'mediazip');
+        if (!rest.length) return { formats: [], error: 'media-permission-required' };
+        mediaWarning = 'media-permission-required';
+        list.length = 0;
+        list.push(...rest);
+      }
+    }
+    return { formats: list, mediaWarning };
+  }
+
   async function exportRun(runId, formats, opts) {
     const o = opts || {};
-    if (o.media && !(await hasMediaPermission())) {
-      return { ok: false, error: 'media-permission-required' };
-    }
+    const wantsMedia = !!o.media || normalizeFormats(formats).includes('mediazip');
+    const plan = planFormats(
+      formats, wantsMedia, wantsMedia ? await hasMediaPermission() : false);
+    if (plan.error) return { ok: false, error: plan.error };
+    const jobFormats = plan.formats;
+    const mediaWarning = plan.mediaWarning;
     const run = await XA.db.getRun(runId);
     if (!run) return { ok: false, error: 'run not found' };
     const settings = run.settings || await XA.settings.loadSettings();
     const job = {
       id: XA.util.uid('export'),
       runId,
-      kind: o.media ? 'mediazip' : (Array.isArray(formats) ? formats.join('+') : String(formats || 'export')),
+      kind: jobFormats.length ? jobFormats.join('+') : 'export',
       state: 'pending',
       files: [],
       error: null,
@@ -123,12 +153,11 @@
         type: M().XAR_OFFSCREEN_EXPORT,
         jobId: job.id,
         runId: run.id,
-        formats: o.media ? ['mediazip'] : formats,
+        formats: jobFormats,
         template,
-        jsonFormat: settings.jsonFormat,
         mediaSettings: settings.media,
         snapshot: !!o.snapshot
-      }, o.media ? 300000 : 120000);
+      }, jobFormats.includes('mediazip') ? 300000 : 120000);
       if (!resp || resp.ok === false) {
         throw new Error((resp && resp.error) || 'offscreen export failed');
       }
@@ -140,7 +169,9 @@
       job.files = results.map((r) => r.filename);
       job.updatedAt = XA.util.nowIso();
       await XA.db.putExportJob(job);
-      return { ok: true, files: job.files, mediaSummary: resp.mediaSummary || null };
+      const done = { ok: true, files: job.files, mediaSummary: resp.mediaSummary || null };
+      if (mediaWarning) done.mediaWarning = mediaWarning;
+      return done;
     } catch (e) {
       job.state = 'failed';
       job.error = String(e && e.message || e);
@@ -159,6 +190,7 @@
 
   XA.exportService = {
     ensureOffscreen, hasOffscreen, closeOffscreenSoon, hasMediaPermission,
+    normalizeFormats, planFormats,
     exportRun, downloadOne, onDownloadChanged, onSuspendCleanup
   };
 })();

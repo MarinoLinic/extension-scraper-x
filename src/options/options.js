@@ -23,8 +23,8 @@ const FIELD_GROUPS = [
   {
     title: 'Pacing preset',
     fields: [
-      { key: 'preset', kind: 'select', label: 'Preset', options: ['gentle', 'balanced', 'fast', 'custom'],
-        desc: 'Gentle is slowest and safest; Fast is aggressive and may miss posts or hit limits. Editing a timing field switches the preset to Custom.' },
+      { key: 'preset', kind: 'select', label: 'Preset', options: ['gentle', 'balanced', 'brisk', 'fast', 'turbo', 'custom'],
+        desc: 'Gentle is slowest and safest; Brisk and Fast are quicker; Turbo is very aggressive and may miss posts or hit limits. Editing a timing field switches the preset to Custom.' },
       { key: 'randomize', kind: 'check', label: 'Randomize delays and scroll distance',
         desc: 'Adds jitter so scrolling does not look robotic. Off = fixed midpoints.' }
     ]
@@ -95,8 +95,6 @@ const FIELD_GROUPS = [
       { key: 'exportFormats', kind: 'formats', label: 'Export formats', desc: 'JSON and/or HTML downloaded after a run or via the Export button.' },
       { key: 'snapshotEveryPosts', kind: 'number', label: 'Snapshot download every N posts', range: [10, 100000],
         desc: 'Optional extra downloaded snapshots mid-run — off by default to avoid file spam. Internal checkpoints are always on regardless.' },
-      { key: 'jsonFormat', kind: 'select', label: 'JSON format', options: ['envelope', 'legacy'],
-        desc: 'Envelope = metadata + posts (default). Legacy = raw posts array like the old scripts produced.' },
       { key: 'saveAs', kind: 'check', label: 'Ask where to save each download' },
       { key: 'filenameTemplate', kind: 'text', label: 'Filename template',
         desc: 'Tokens: %type %source %handle %title %tab %date %time %datetime %num %run %ext' }
@@ -206,7 +204,11 @@ function buildSettingsForm() {
       if (f.kind === 'select') {
         const sel = el('select');
         sel.id = 'f-' + f.key;
-        for (const opt of f.options) sel.appendChild(el('option', null, opt)).value = opt;
+        for (const opt of f.options) {
+          const preset = XA.defaults.PRESETS[opt];
+          const label = (f.key === 'preset' && preset && preset.label) || opt;
+          sel.appendChild(el('option', null, label)).value = opt;
+        }
         row.appendChild(sel);
       } else if (f.kind === 'formats') {
         const wrap = el('span');

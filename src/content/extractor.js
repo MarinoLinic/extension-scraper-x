@@ -6,9 +6,23 @@
   const CHAIN_MAX_GAP_MIN = 30;
 
   function expandTruncatedText(root) {
+    let clicked = 0;
     root.querySelectorAll('[data-testid="tweet-text-show-more-link"]').forEach((btn) => {
-      try { btn.click(); } catch (_) { /* expand is best effort */ }
+      try { btn.click(); clicked += 1; } catch (_) { /* expand is best effort */ }
     });
+    return clicked;
+  }
+
+  function linkTarget(a) {
+    const href = a.href;
+    let text = (a.textContent || '').trim();
+    if (text.endsWith('…')) text = text.slice(0, -1).trim();
+    if (/^https:\/\//i.test(text) && !text.includes('…')) {
+      try {
+        return new URL(text).href;
+      } catch (_) { /* keep href */ }
+    }
+    return href;
   }
 
   function findQuoteBox(tweet) {
@@ -42,14 +56,23 @@
       src.includes('emoji') || src.includes('hashflags');
   }
 
-  function collectLinkCard(tweet, quoteBox) {
+  function isBareUrlLine(line) {
+    return /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(line);
+  }
+
+  function collectLinkCard(tweet, quoteBox, fallbackLinks) {
     const card = tweet.querySelector('[data-testid="card.wrapper"]');
     if (!card || (quoteBox && quoteBox.contains(card))) return null;
     const a = card.querySelector('a[href]');
     const img = card.querySelector('img');
+    const lines = XA.util.textOf(card).split('\n').map((s) => s.trim()).filter(Boolean);
+    const meaningful = lines.filter((l) => !isBareUrlLine(l));
+    const pool = meaningful.length ? meaningful : lines;
+    const longest = pool.reduce((best, l) => (l.length > best.length ? l : best), '');
     return {
-      url: a ? a.href : null,
-      title: (a && a.getAttribute('aria-label')) || XA.util.textOf(card).split('\n')[0] || '',
+      url: a ? a.href
+        : (fallbackLinks && fallbackLinks.length ? fallbackLinks[fallbackLinks.length - 1].href : null),
+      title: (a && a.getAttribute('aria-label')) || longest,
       image: img ? img.src : null
     };
   }
@@ -337,7 +360,6 @@
     }
     const social = article.querySelector('[data-testid="socialContext"]');
     post.social_context = social ? XA.util.textOf(social).trim() : null;
-    post.link_card = collectLinkCard(article, quoteBox);
 
     if (timeElement) {
       post.timestamp_iso = timeElement.getAttribute('datetime');
@@ -366,10 +388,11 @@
     post.text = mainTextEl ? XA.util.textOf(mainTextEl) : '';
     if (mainTextEl) {
       post.links = Array.from(mainTextEl.querySelectorAll('a[href]')).map((a) => ({
-        display: XA.util.textOf(a),
-        href: a.href
+        display: XA.util.textOf(a).trim(),
+        href: linkTarget(a)
       }));
     }
+    post.link_card = collectLinkCard(article, quoteBox, post.links);
 
     const quoteImgUrls = quoteBox
       ? new Set(collectPhotoEntries(quoteBox).map((p) => p.url)) : new Set();
@@ -519,7 +542,7 @@
 
   XA.extractor = {
     CHAIN_MAX_GAP_MIN,
-    expandTruncatedText, findQuoteBox, upgradeMediaUrl,
+    expandTruncatedText, findQuoteBox, upgradeMediaUrl, linkTarget,
     collectLinkCard, collectPhotoEntries, collectVideoEntries,
     extractQuote, extractMetrics, numberedCounter,
     extractArticle, extractVisible, findShowThreadLink, stitchPairs

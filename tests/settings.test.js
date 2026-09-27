@@ -35,7 +35,6 @@ describe('settings validation', () => {
     expect(DEFAULT_SETTINGS.autoExportOnComplete).toBe(true);
     expect(DEFAULT_SETTINGS.exportFormats).toEqual(['json', 'html']);
     expect(DEFAULT_SETTINGS.snapshotEveryPosts).toBeNull();
-    expect(DEFAULT_SETTINGS.jsonFormat).toBe('envelope');
     expect(DEFAULT_SETTINGS.saveAs).toBe(false);
     expect(DEFAULT_SETTINGS.filenameTemplate).toBe('x_%type_%handle_%date_%num');
     expect(DEFAULT_SETTINGS.autoMediaZip).toBe(false);
@@ -115,6 +114,67 @@ describe('settings validation', () => {
       backtrackChancePercent: 2,
       stallTimeoutMs: 90000, stallRecoveryAttempts: 1
     });
+    expect(PRESETS.brisk).toMatchObject({
+      label: 'Brisk',
+      tickDelayMinMs: 1050, tickDelayMaxMs: 3400,
+      scrollMinPx: 480, scrollMaxPx: 1100,
+      restEveryPosts: 85, restCountJitterPercent: 25,
+      restMinMs: 15000, restMaxMs: 40000,
+      readingPauseChancePercent: 5, readingPauseMinMs: 6000, readingPauseMaxMs: 16000,
+      backtrackChancePercent: 3,
+      stallTimeoutMs: 105000, stallRecoveryAttempts: 2
+    });
+    expect(PRESETS.turbo).toMatchObject({
+      label: 'Turbo',
+      tickDelayMinMs: 400, tickDelayMaxMs: 1200,
+      scrollMinPx: 900, scrollMaxPx: 1800,
+      restEveryPosts: 160, restCountJitterPercent: 15,
+      restMinMs: 8000, restMaxMs: 20000,
+      readingPauseChancePercent: 1, readingPauseMinMs: 3000, readingPauseMaxMs: 8000,
+      backtrackChancePercent: 1,
+      stallTimeoutMs: 60000, stallRecoveryAttempts: 1
+    });
+    expect(PRESETS.turbo.warning).toMatch(/rate limits/i);
+  });
+
+  it('orders presets gentle through turbo then custom', () => {
+    expect(Object.keys(PRESETS)).toEqual(
+      ['gentle', 'balanced', 'brisk', 'fast', 'turbo', 'custom']);
+  });
+
+  it('applies brisk and turbo preset values', () => {
+    const brisk = applyPreset(DEFAULT_SETTINGS, 'brisk');
+    expect(brisk.preset).toBe('brisk');
+    expect(brisk.tickDelayMinMs).toBe(1050);
+    expect(brisk.scrollMaxPx).toBe(1100);
+    expect(brisk.stallTimeoutMs).toBe(105000);
+    const turbo = applyPreset(DEFAULT_SETTINGS, 'turbo');
+    expect(turbo.preset).toBe('turbo');
+    expect(turbo.tickDelayMinMs).toBe(400);
+    expect(turbo.restEveryPosts).toBe(160);
+    expect(XA.settings.presetWarning(turbo)).toMatch(/rate limits/i);
+  });
+
+  it('drops stale schema keys like jsonFormat from saved settings', async () => {
+    const prev = globalThis.chrome;
+    globalThis.chrome = { storage: { local: {
+      get: async () => ({ 'xarchive.settings': {
+        preset: 'fast', jsonFormat: 'array', bogus: 1,
+        media: { avatars: true }
+      } }),
+      set: async () => {}
+    } } };
+    try {
+      const s = await XA.settings.loadSettings();
+      expect(s.preset).toBe('fast');
+      expect('jsonFormat' in s).toBe(false);
+      expect('bogus' in s).toBe(false);
+      expect(s.tickDelayMinMs).toBe(1400);
+      expect(s.media.avatars).toBe(true);
+      expect(s.media.postImages).toBe(true);
+    } finally {
+      globalThis.chrome = prev;
+    }
   });
 
   it('validates the new pacing ranges and swaps the reading-pause pair', () => {
@@ -155,7 +215,7 @@ describe('settings validation', () => {
   });
 
   it('rejects unknown presets and empty filename templates', () => {
-    const { errors } = validateSettings({ preset: 'turbo', filenameTemplate: '  ' });
+    const { errors } = validateSettings({ preset: 'warp9', filenameTemplate: '  ' });
     expect(errors.preset).toBeTruthy();
     expect(errors.filenameTemplate).toBeTruthy();
   });

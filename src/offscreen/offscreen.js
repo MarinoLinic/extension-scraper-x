@@ -78,7 +78,7 @@ async function handleExport(msg) {
   const formats = msg.formats || [];
   for (const fmt of formats) {
     if (fmt === 'json') {
-      const json = XA.exportJson.serializeJson(run, posts, msg.jsonFormat || 'envelope');
+      const json = XA.exportJson.serializeJson(run, posts);
       files.push(makeFile(exportFilename(ctx, 'json', msg.snapshot ? '_snapshot' : ''), json, 'application/json'));
     } else if (fmt === 'html') {
       const html = XA.exportHtml.renderHtmlReport(run, posts, {});

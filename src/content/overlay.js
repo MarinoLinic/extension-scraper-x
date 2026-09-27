@@ -28,14 +28,24 @@ button:hover{background:#38444d}
       this.collapsed = false;
       this.visible = false;
       this.els = {};
+      this.mountPromise = null;
+      this.mountGeneration = 0;
     }
 
-    async mount() {
-      if (this.host) return;
+    mount() {
+      if (this.host) return Promise.resolve();
+      if (!this.mountPromise) {
+        this.mountPromise = this._mount(this.mountGeneration)
+          .finally(() => { this.mountPromise = null; });
+      }
+      return this.mountPromise;
+    }
+
+    async _mount(generation) {
       const host = document.createElement('div');
       host.id = 'x-archive-overlay-host';
       host.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483646;';
-      this.shadow = host.attachShadow({ mode: 'open' });
+      const shadow = host.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
       style.textContent = await this.loadCss();
       const panel = document.createElement('div');
@@ -55,11 +65,11 @@ button:hover{background:#38444d}
         '<button data-act="resume" style="display:none">Resume</button>' +
         '<button data-act="stop">Stop</button>' +
         '<button data-act="export">Export</button></div>';
-      this.shadow.appendChild(style);
-      this.shadow.appendChild(panel);
-      this.panel = panel;
+      shadow.appendChild(style);
+      shadow.appendChild(panel);
+      const els = {};
       for (const el of panel.querySelectorAll('[data-el]')) {
-        this.els[el.getAttribute('data-el')] = el;
+        els[el.getAttribute('data-el')] = el;
       }
       panel.addEventListener('click', (ev) => {
         const act = ev.target && ev.target.getAttribute('data-act');
@@ -70,7 +80,14 @@ button:hover{background:#38444d}
           this.handlers['on' + act[0].toUpperCase() + act.slice(1)]();
         }
       });
+      if (generation !== this.mountGeneration) return;
+      for (const dup of document.querySelectorAll('#x-archive-overlay-host')) {
+        if (dup !== host) dup.remove();
+      }
       (document.body || document.documentElement).appendChild(host);
+      this.shadow = shadow;
+      this.panel = panel;
+      this.els = els;
       this.host = host;
       this.visible = true;
     }
@@ -91,7 +108,9 @@ button:hover{background:#38444d}
     }
 
     show() {
+      const generation = this.mountGeneration;
       this.mount().then(() => {
+        if (generation !== this.mountGeneration) return;
         if (this.host) this.host.style.display = '';
         this.visible = true;
       }).catch(() => {});
@@ -103,6 +122,7 @@ button:hover{background:#38444d}
     }
 
     remove() {
+      this.mountGeneration += 1;
       if (this.host) this.host.remove();
       this.host = null;
       this.shadow = null;
@@ -112,7 +132,10 @@ button:hover{background:#38444d}
     update(s) {
       if (!s) return;
       if (!this.host) {
-        this.mount().then(() => this.update(s)).catch(() => {});
+        const generation = this.mountGeneration;
+        this.mount().then(() => {
+          if (generation === this.mountGeneration) this.update(s);
+        }).catch(() => {});
         return;
       }
       const state = s.state || 'idle';

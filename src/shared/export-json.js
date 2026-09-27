@@ -24,10 +24,7 @@
     };
   }
 
-  function serializeJson(run, posts, format) {
-    if (format === 'legacy') {
-      return JSON.stringify(posts || [], null, 2);
-    }
+  function serializeJson(run, posts) {
     return JSON.stringify(buildEnvelope(run, posts), null, 2);
   }
 

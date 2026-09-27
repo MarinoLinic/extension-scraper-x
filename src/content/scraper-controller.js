@@ -255,14 +255,7 @@
         return;
       }
 
-      const extraction = XA.extractor.extractVisible(document, {
-        author: this.run.source.handle,
-        captureContext: 'timeline',
-        sourceKey: this.run.source.key,
-        sourceType: this.run.source.type,
-        autoExpandText: this.settings.autoExpandText,
-        prevTail: this.prevTail
-      });
+      const extraction = await this.extractVisibleNow();
       this.prevTail = extraction.tail || this.prevTail;
 
       const batch = this.absorbBatch(extraction.posts);
@@ -474,6 +467,21 @@
       this.schedule();
     }
 
+    async extractVisibleNow() {
+      if (this.settings && this.settings.autoExpandText) {
+        const clicked = XA.extractor.expandTruncatedText(document);
+        if (clicked > 0) await XA.util.sleep(300);
+      }
+      return XA.extractor.extractVisible(document, {
+        author: this.run.source.handle,
+        captureContext: 'timeline',
+        sourceKey: this.run.source.key,
+        sourceType: this.run.source.type,
+        autoExpandText: false,
+        prevTail: this.prevTail
+      });
+    }
+
     async stop(reason) {
       if (!this.run || TERMINAL_STATES.includes(this.state)) return;
       this.state = 'stopping';
@@ -482,14 +490,7 @@
       this.reportState();
       try {
         if (this.sourceMatches()) {
-          const extraction = XA.extractor.extractVisible(document, {
-            author: this.run.source.handle,
-            captureContext: 'timeline',
-            sourceKey: this.run.source.key,
-            sourceType: this.run.source.type,
-            autoExpandText: this.settings.autoExpandText,
-            prevTail: this.prevTail
-          });
+          const extraction = await this.extractVisibleNow();
           this.absorbBatch(extraction.posts);
         }
       } catch (_) { /* final extract is best effort */ }
@@ -507,14 +508,7 @@
       this.message = message || '';
       try {
         if (this.sourceMatches()) {
-          const extraction = XA.extractor.extractVisible(document, {
-            author: this.run.source.handle,
-            captureContext: 'timeline',
-            sourceKey: this.run.source.key,
-            sourceType: this.run.source.type,
-            autoExpandText: this.settings.autoExpandText,
-            prevTail: this.prevTail
-          });
+          const extraction = await this.extractVisibleNow();
           this.absorbBatch(extraction.posts);
         }
       } catch (_) { /* ignore */ }

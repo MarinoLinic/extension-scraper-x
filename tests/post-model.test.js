@@ -117,9 +117,9 @@ describe('merge richness policy', () => {
   });
 });
 
-describe('import compatibility', () => {
-  it('accepts raw legacy arrays', () => {
-    const { posts, envelope } = pm.legacyPostsFromImport([{ tweet_url: 'https://x.com/a/status/1', text: 'hi' }]);
+describe('JSON import', () => {
+  it('accepts raw post arrays', () => {
+    const { posts, envelope } = pm.postsFromImport([{ tweet_url: 'https://x.com/a/status/1', text: 'hi' }]);
     expect(posts).toHaveLength(1);
     expect(envelope).toBeNull();
   });
@@ -129,22 +129,23 @@ describe('import compatibility', () => {
       { id: 'r1', source: { key: 'profile:a:posts' }, state: 'completed' },
       [{ tweet_url: 'https://x.com/a/status/2' }]
     );
-    const { posts, envelope } = pm.legacyPostsFromImport(env);
+    const { posts, envelope } = pm.postsFromImport(env);
     expect(posts).toHaveLength(1);
     expect(envelope.id).toBe('r1');
     expect(env.schemaVersion).toBe(1);
   });
 
-  it('serializes legacy mode as a bare array', () => {
-    const out = XA.exportJson.serializeJson({ id: 'r' }, [{ tweet_url: 'x' }], 'legacy');
+  it('always serializes exports as the archive envelope', () => {
+    const out = XA.exportJson.serializeJson({ id: 'r' }, [{ tweet_url: 'x' }]);
     const parsed = JSON.parse(out);
-    expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed[0].tweet_url).toBe('x');
-    expect(parsed[0].archive).toBeUndefined();
+    expect(Array.isArray(parsed)).toBe(false);
+    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.archive.id).toBe('r');
+    expect(parsed.posts[0].tweet_url).toBe('x');
   });
 
   it('reports unreadable shapes', () => {
-    const { posts, warnings } = pm.legacyPostsFromImport({ nope: 1 });
+    const { posts, warnings } = pm.postsFromImport({ nope: 1 });
     expect(posts).toHaveLength(0);
     expect(warnings.length).toBeGreaterThan(0);
   });

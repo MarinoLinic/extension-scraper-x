@@ -31,7 +31,7 @@ chrome.tabs.onRemoved.addListener((tabId) => XA.runService.tabRemoved(tabId));
 
 async function handleImport(msg) {
   const archive = msg.archive;
-  const { posts, envelope, warnings } = XA.postModel.legacyPostsFromImport(archive);
+  const { posts, envelope, warnings } = XA.postModel.postsFromImport(archive);
   if (!posts.length) {
     return { ok: false, error: 'No posts found in imported JSON', warnings };
   }

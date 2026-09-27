@@ -206,7 +206,7 @@
     return out;
   }
 
-  function legacyPostsFromImport(parsed) {
+  function postsFromImport(parsed) {
     if (!parsed) return { posts: [], envelope: null, warnings: ['Empty or unreadable archive'] };
     const warnings = [];
     if (Array.isArray(parsed)) {
@@ -221,6 +221,6 @@
 
   XA.postModel = {
     POST_SCHEMA_VERSION, emptyPost, canonicalPostId, normalizePost, mergePosts,
-    postsSemanticallyEqual, legacyPostsFromImport
+    postsSemanticallyEqual, postsFromImport
   };
 })();

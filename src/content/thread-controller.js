@@ -91,11 +91,13 @@
 
         for (let pass = 0; pass < maxPasses && !this.cancelled; pass++) {
           diag.passes = pass + 1;
+          const clicked = XA.extractor.expandTruncatedText(document);
+          if (clicked > 0) await XA.util.sleep(300);
           const result = XA.extractor.extractVisible(document, {
             captureContext: 'thread',
             conversationUrl: this.conversationUrl(),
             allowFocusedRoot: true,
-            autoExpandText: true,
+            autoExpandText: false,
             author: job.authorHandle
           });
           for (const p of result.posts) {

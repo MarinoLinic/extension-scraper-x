@@ -10,8 +10,6 @@ credentials**, calls **no private GraphQL/internal APIs**, and talks to **no ext
 Everything it captures is stored locally in the extension's own IndexedDB until you export
 or delete it.
 
-It unifies and replaces the older `bookmarks.js` and `profile.js` console scripts.
-
 ---
 
 ## Features
@@ -28,14 +26,14 @@ It unifies and replaces the older `bookmarks.js` and `profile.js` console script
   thresholds, stall detection with recovery nudges, and reliable bottom-of-timeline
   detection (page must be visible, online, and unchanged before "completed" is declared).
 - **Configurable limits** — max active duration, max posts, oldest date, idle timeout.
-- **Polished exports** — archive-envelope JSON (with optional legacy array mode) and a
+- **Polished exports** — archive-envelope JSON and a
   self-contained, searchable/filterable HTML report; tokenized filenames.
 - **Optional media ZIP** — explicit opt-in; downloads post/quote/card/avatar images with a
   manifest that records every file or failure, plus an offline HTML report.
 - **Assisted thread expansion** — a separate, reviewable, user-triggered phase that visits
   candidate threads in one dedicated worker window and merges the findings.
-- **Legacy import** — imports both the old raw-array JSON exports and new envelopes,
-  deduplicating with the same merge rules used while scraping.
+- **Flexible import** — accepts archive envelopes and raw post arrays, normalizing and
+  deduplicating them with the same merge rules used during capture.
 - **Privacy by construction** — no telemetry, no servers, no remote code, minimal
   permissions (see below).
 
@@ -83,7 +81,9 @@ pages, other `/i/*` sections) are rejected in the popup with an explicit reason.
 
 Then:
 
-1. Click the toolbar icon. The popup shows the detected source (type, handle/tab, source key).
+1. Click the toolbar icon. The popup shows the detected source (type, handle/tab, source key)
+   plus a quick-settings section for the preset, limits, export formats, snapshots, filename
+   template, and media ZIP toggle — the full field set lives on the options page.
 2. Press **Start**. An optional in-page panel appears (bottom-right) mirroring state, count,
    elapsed time, and rest countdown.
 3. The scraper expands "Show more" text, extracts the viewport, persists the batch to
@@ -140,13 +140,15 @@ options page. Every field shows inline descriptions and validation.
 |---|---|---|---|---|---|---|
 | Gentle | 2.5–7.5 s | 240–760 px | ~45 (±35%) | 30–90 s | 150 s | 2 |
 | **Balanced (default)** | 1.4–5.2 s | 320–980 px | ~65 (±30%) | 18–55 s | 120 s | 2 |
+| Brisk | 1.05–3.4 s | 480–1100 px | ~85 (±25%) | 15–40 s | 105 s | 2 |
 | Fast (use with care) | 0.8–2.4 s | 650–1250 px | ~110 (±20%) | 12–30 s | 90 s | 1 |
+| Turbo (use with care) | 0.4–1.2 s | 900–1800 px | ~160 (±15%) | 8–20 s | 60 s | 1 |
 | Custom | your values | | | | | |
 
 Presets also tune the reading-pause and backtrack chances (see below).
 
-Editing any preset-managed field switches the preset to *Custom*. *Fast* carries a warning
-because aggressive pacing risks rate limits and missed posts.
+Editing any preset-managed field switches the preset to *Custom*. *Fast* and *Turbo* carry
+warnings because aggressive pacing risks rate limits and missed posts.
 
 ### Timing fields (defaults are Balanced)
 
@@ -199,7 +201,6 @@ green done, red error).
 - `exportFormats` — JSON and/or HTML (both on by default).
 - `snapshotEveryPosts` (off) — optional *downloaded* snapshots mid-run every N posts.
   This is a convenience copy, not the reliability mechanism (the DB is).
-- `jsonFormat` — `envelope` (default) or `legacy` (bare posts array).
 - `saveAs` (off) — show a save dialog per download.
 - `filenameTemplate` — tokenized, with a live preview.
 
@@ -235,7 +236,7 @@ timestamps, warnings, and a settings snapshot. Actions: **Export JSON / HTML / b
 
 Storage usage is displayed; uninstalling the extension deletes all local archives.
 
-## JSON schema & import compatibility
+## JSON schema & import
 
 Default export is an **archive envelope**:
 
@@ -257,7 +258,7 @@ Default export is an **archive envelope**:
 }
 ```
 
-Each post keeps the familiar legacy keys (`tweet_url`, `name`, `handle`, `timestamp_iso`,
+Each post contains core fields (`tweet_url`, `name`, `handle`, `timestamp_iso`,
 `text`, `images`, `videos`, `quote_context`, `link_card`, `metrics`) plus stable metadata:
 `schema_version`, `id` (status id), `links` (ordered `{display, href}`), `media`
 (`{url, type, alt, poster, permalink}`), `capture_context` (`timeline | thread | import`),
@@ -265,9 +266,7 @@ Each post keeps the familiar legacy keys (`tweet_url`, `name`, `handle`, `timest
 `thread_id`, `is_self_reply`, `show_thread_link`, `thread_candidates`, `thread_scraped`),
 and `warnings`. Unavailable metrics are `null`, not `0`.
 
-**Legacy mode** exports the raw posts array — the exact shape the old scripts produced.
-
-**Import** accepts both the envelope and raw arrays from `bookmarks.js`/`profile.js`.
+**Import** accepts both archive envelopes and raw post arrays.
 Imports create a new run (`stopReason: imported`), inferring the profile source when one
 author dominates; unknown fields are preserved and normalizations are reported as warnings.
 Dedup uses the same richness merge as live scraping.
@@ -422,6 +421,6 @@ Automated tests cover pure logic and DOM fixtures; the following remain manual i
 browser: load unpacked with no manifest errors; detect each source type; Start → Rest →
 Pause → Resume → Stop across popup/badge/overlay; close popup mid-run; reload recovery and
 route-change pause; each limit/stop reason; JSON/HTML export filenames; HTML
-search/filter/sort; legacy import round-trip; media permission grant + ZIP + offline links
+search/filter/sort; raw-array import round-trip; media permission grant + ZIP + offline links
 + a failed image; thread queue review/run/cancel; overlay default on, media auto-ZIP
 default off.

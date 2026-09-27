@@ -40,6 +40,62 @@ describe('HTML report safety', () => {
     expect(out).not.toContain('<script');
   });
 
+  it('strips trailing punctuation from literal URLs', () => {
+    const out = linkifyText('see https://example.com/a.');
+    expect(out).toContain('href="https://example.com/a"');
+    expect(out).toContain('</a>.');
+  });
+
+  it('anchors captured display text to its resolved href', () => {
+    const out = linkifyText('watch youtube.com/watch?v=j3fWQ… now', [
+      { display: 'youtube.com/watch?v=j3fWQ…', href: 'https://youtube.com/watch?v=j3fWQwd_p_4' }
+    ]);
+    expect(out).toContain('href="https://youtube.com/watch?v=j3fWQwd_p_4"');
+    expect(out).toContain('>youtube.com/watch?v=j3fWQ…</a>');
+  });
+
+  it('captured display links win over literal URLs at the same position', () => {
+    const out = linkifyText('https://example.com/x', [
+      { display: 'https://example.com/x', href: 'https://resolved.example.com/y' }
+    ]);
+    expect(out).toContain('href="https://resolved.example.com/y"');
+    expect(out.match(/<a /g)).toHaveLength(1);
+  });
+
+  it('never anchors captured displays whose href fails the allowlist', () => {
+    const out = linkifyText('click here', [
+      { display: 'click here', href: 'javascript:alert(1)' }
+    ]);
+    expect(out).not.toContain('<a ');
+    expect(out).toContain('click here');
+  });
+
+  it('keeps media-only hrefs (data:, blob:, media/ paths) as plain text', () => {
+    const out = linkifyText('one two three', [
+      { display: 'one', href: 'data:image/png;base64,AAAA' },
+      { display: 'two', href: 'blob:https://x.com/abcd' },
+      { display: 'three', href: 'media/1_post_0.jpg' }
+    ]);
+    expect(out).toBe('one two three');
+  });
+
+  it('normalizes protocol-relative captured hrefs to https', () => {
+    const out = linkifyText('go to example.com/x', [
+      { display: 'example.com/x', href: '//example.com/x' }
+    ]);
+    expect(out).toContain('href="https://example.com/x"');
+  });
+
+  it('chooses the leftmost overlapping captured display regardless of link order', () => {
+    const out = linkifyText('see first part ends now', [
+      { display: 'part ends now', href: 'https://b.example.com/right' },
+      { display: 'first part ends', href: 'https://a.example.com/left' }
+    ]);
+    expect(out).toContain('href="https://a.example.com/left"');
+    expect(out).toContain('>first part ends</a> now');
+    expect(out).not.toContain('b.example.com');
+  });
+
   it('contains no remote scripts or styles', () => {
     expect(html).not.toMatch(/<script[^>]+src=/i);
     expect(html).not.toMatch(/<link[^>]+href=/i);
@@ -51,6 +107,31 @@ describe('HTML report safety', () => {
     expect(pending).toContain('may be incomplete');
     expect(html).toContain('@alice posts');
     expect(html).toContain('1 posts');
+  });
+
+  it('linkifies URLs in meta lines and run warnings', () => {
+    const out = renderHtmlReport(Object.assign({}, run, {
+      warnings: ['capture stopped early — see https://status.example.com/x']
+    }), [hostile]);
+    expect(out).toContain('Source: <a href="https://x.com/alice"');
+    expect(out).toContain('<a href="https://status.example.com/x"');
+  });
+
+  it('uses captured links for main text and linkifies a card title without a URL', () => {
+    const p = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/42',
+      text: 'watch youtube.com/watch?v=j3fWQ… for details',
+      links: [{ display: 'youtube.com/watch?v=j3fWQ…', href: 'https://youtube.com/watch?v=j3fWQwd_p_4' }],
+      link_card: { url: null, title: 'episode at https://example.com/ep9', image: null },
+      warnings: ['see https://warn.example.com/x'],
+      social_context: 'From https://context.example.com/y'
+    });
+    const out = renderHtmlReport(run, [p]);
+    expect(out).toContain('href="https://youtube.com/watch?v=j3fWQwd_p_4"');
+    expect(out).toContain('>youtube.com/watch?v=j3fWQ…</a>');
+    expect(out).toContain('href="https://example.com/ep9"');
+    expect(out).toContain('href="https://warn.example.com/x"');
+    expect(out).toContain('href="https://context.example.com/y"');
   });
 
   it('marks posts with data attributes for client filtering', () => {

@@ -123,6 +123,54 @@ describe('extractor — standard tweet', () => {
   });
 });
 
+describe('extractor — t.co link targets and button cards', () => {
+  it('resolves a shortened tweet-text anchor to the direct URL', () => {
+    document.body.innerHTML =
+      '<article data-testid="tweet">' +
+      '<div data-testid="User-Name"><a href="/alice">Alice Author</a></div>' +
+      '<a href="/alice/status/2103390685315367101"><time datetime="2024-09-26T12:00:00.000Z">Sep 26</time></a>' +
+      '<div data-testid="tweetText">Part 1 is live — A Study in Grey ' +
+      '<a href="https://t.co/AbCdEfGh"><span style="display:none">https://</span>' +
+      'youtube.com/watch?v=j3fWQ<span style="display:none">wd_p_4</span>…</a></div>' +
+      '<div data-testid="card.wrapper" role="button">' +
+      '<div>youtube.com</div><div>Episode 9: A Study in Grey</div></div>' +
+      '<div role="group" aria-label="1 reply, 2 reposts, 3 likes"></div>' +
+      '</article>';
+    const { posts } = XA.extractor.extractVisible(document, ctx());
+    expect(posts).toHaveLength(1);
+    const p = posts[0];
+    expect(p.links).toHaveLength(1);
+    expect(p.links[0].display).toBe('youtube.com/watch?v=j3fWQ…');
+    expect(p.links[0].href).toBe('https://youtube.com/watch?v=j3fWQwd_p_4');
+    expect(p.link_card.url).toBe('https://youtube.com/watch?v=j3fWQwd_p_4');
+    expect(p.link_card.title).toBe('Episode 9: A Study in Grey');
+  });
+
+  it('keeps the DOM href when textContent is not a full https URL', () => {
+    document.body.innerHTML =
+      '<article data-testid="tweet">' +
+      '<div data-testid="User-Name"><a href="/alice">Alice Author</a></div>' +
+      '<a href="/alice/status/2103390685315367102"><time datetime="2024-09-26T13:00:00.000Z">Sep 26</time></a>' +
+      '<div data-testid="tweetText">read this ' +
+      '<a href="https://t.co/xyz">example.com/some…</a></div>' +
+      '<div role="group" aria-label="1 reply"></div>' +
+      '</article>';
+    const p = XA.extractor.extractVisible(document, ctx()).posts[0];
+    expect(p.links[0].display).toBe('example.com/some…');
+    expect(p.links[0].href).toBe('https://t.co/xyz');
+  });
+
+  it('expandTruncatedText returns the number of buttons clicked', () => {
+    document.body.innerHTML =
+      '<div><button data-testid="tweet-text-show-more-link"></button>' +
+      '<button data-testid="tweet-text-show-more-link"></button>' +
+      '<span data-testid="other"></span></div>';
+    expect(XA.extractor.expandTruncatedText(document)).toBe(2);
+    document.body.innerHTML = '<div><span>none</span></div>';
+    expect(XA.extractor.expandTruncatedText(document)).toBe(0);
+  });
+});
+
 describe('extractor — status page', () => {
   it('extracts the focused root via the conversation URL', () => {
     mountFixture('status.html');

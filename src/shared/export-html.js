@@ -15,18 +15,52 @@
     return null;
   }
 
-  function linkifyText(text) {
+  function safeTextLinkUrl(url) {
+    const safe = safeUrl(url);
+    return safe && /^https?:\/\//i.test(safe) ? safe : null;
+  }
+
+  function linkifyText(text, links) {
     const raw = String(text || '');
-    const out = [];
+    const candidates = [];
+    for (const l of links || []) {
+      const display = l && l.display != null ? String(l.display).trim() : '';
+      const href = l ? safeTextLinkUrl(l.href) : null;
+      if (!display || !href) continue;
+      let idx = raw.indexOf(display);
+      while (idx !== -1) {
+        candidates.push({
+          start: idx, end: idx + display.length,
+          href, label: display, priority: 0
+        });
+        idx = raw.indexOf(display, idx + display.length);
+      }
+    }
     const re = /(https?:\/\/[^\s<>"']+)/g;
-    let last = 0;
     let m;
     while ((m = re.exec(raw)) !== null) {
-      if (m.index > last) out.push(esc(raw.slice(last, m.index)));
       const url = m[1].replace(/[.,;:!?)]+$/, '');
-      const tail = m[1].slice(url.length);
-      out.push('<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(url) + '</a>' + esc(tail));
-      last = m.index + m[1].length;
+      const end = m.index + url.length;
+      if (!url) continue;
+      candidates.push({
+        start: m.index, end, href: url, label: url,
+        tail: raw.slice(end, m.index + m[1].length), priority: 1
+      });
+    }
+    candidates.sort((a, b) =>
+      a.start - b.start || a.priority - b.priority || b.end - a.end);
+
+    const out = [];
+    let last = 0;
+    let consumedUntil = 0;
+    for (const hit of candidates) {
+      if (hit.start < consumedUntil) continue;
+      if (hit.start > last) out.push(esc(raw.slice(last, hit.start)));
+      out.push('<a href="' + esc(hit.href) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(hit.label) + '</a>');
+      if (hit.tail) out.push(esc(hit.tail));
+      last = hit.end + (hit.tail ? hit.tail.length : 0);
+      consumedUntil = last;
     }
     out.push(esc(raw.slice(last)));
     return out.join('');
@@ -124,7 +158,7 @@
       return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + h + '</a>' : h;
     }).join(', ');
     const banners = [];
-    if (post.social_context) banners.push('<span class="xa-banner">' + esc(post.social_context) + '</span>');
+    if (post.social_context) banners.push('<span class="xa-banner">' + linkifyText(post.social_context) + '</span>');
     if (post.is_reply && replyTargets) banners.push('<span class="xa-banner">Replying to ' + replyTargets + '</span>');
     if (post.is_thread) {
       const role = post.thread_role && post.thread_role !== 'standalone' ? post.thread_role : 'thread';
@@ -136,7 +170,7 @@
     }
     if (post.thread_scraped) banners.push('<span class="xa-banner xa-banner-ok">Thread expanded</span>');
     for (const w of (post.warnings || [])) {
-      banners.push('<span class="xa-banner xa-banner-warn">' + esc(w) + '</span>');
+      banners.push('<span class="xa-banner xa-banner-warn">' + linkifyText(w) + '</span>');
     }
 
     const card = post.link_card;
@@ -144,7 +178,7 @@
     const cardHtml = card && (card.url || card.title)
       ? '<div class="xa-linkcard">' +
         (cardUrl ? '<a href="' + esc(cardUrl) + '" target="_blank" rel="noopener noreferrer">' +
-          esc(card.title || card.url) + '</a>' : esc(card.title || card.url || '')) +
+          esc(card.title || card.url) + '</a>' : linkifyText(card.title || card.url || '')) +
         (card.image ? imgTag(card.image, 'link card image', mediaMap, offline) : '') +
         '</div>' : '';
 
@@ -178,7 +212,7 @@
       (post.handle ? ' <span class="xa-handle">' + esc(post.handle) + '</span>' : '') + '</div></div>' +
       tsLink +
       (banners.length ? '<div class="xa-banners">' + banners.join(' ') + '</div>' : '') +
-      '<div class="xa-text">' + linkifyText(post.text || '') + '</div>' +
+      '<div class="xa-text">' + linkifyText(post.text || '', post.links || []) + '</div>' +
       cardHtml +
       renderQuote(post.quote_context, mediaMap, offline) +
       renderMedia(post, mediaMap, offline) +
@@ -304,11 +338,11 @@ apply();})();`;
     let html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
       '<title>' + esc(title) + ' — X Archive</title>\n<style>' + CSS + '</style>\n</head>\n<body>\n' +
-      '<h1>' + esc(title) + ' (' + list.length + ' posts)</h1>\n' +
-      '<div class="xa-meta">' + meta.map(esc).join('<br>') + '</div>\n';
+      '<h1>' + linkifyText(title) + ' (' + list.length + ' posts)</h1>\n' +
+      '<div class="xa-meta">' + meta.map((line) => linkifyText(line)).join('<br>') + '</div>\n';
     if (warnings.length) {
       html += '<div class="xa-warnbox"><strong>Completeness notes</strong><br>' +
-        warnings.map(esc).join('<br>') + '</div>\n';
+        warnings.map((w) => linkifyText(w)).join('<br>') + '</div>\n';
     }
     html += '<div class="xa-controls">' +
       '<input type="search" id="xaq" placeholder="Search text, author, cards…" aria-label="Search posts">' +

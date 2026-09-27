@@ -36,7 +36,6 @@
     autoExportOnComplete: true,
     exportFormats: ['json', 'html'],
     snapshotEveryPosts: null,
-    jsonFormat: 'envelope',
     saveAs: false,
     filenameTemplate: 'x_%type_%handle_%date_%num',
 
@@ -70,6 +69,16 @@
       backtrackChancePercent: 4,
       stallTimeoutMs: 120000, stallRecoveryAttempts: 2
     },
+    brisk: {
+      label: 'Brisk',
+      tickDelayMinMs: 1050, tickDelayMaxMs: 3400,
+      scrollMinPx: 480, scrollMaxPx: 1100,
+      restEveryPosts: 85, restCountJitterPercent: 25,
+      restMinMs: 15000, restMaxMs: 40000,
+      readingPauseChancePercent: 5, readingPauseMinMs: 6000, readingPauseMaxMs: 16000,
+      backtrackChancePercent: 3,
+      stallTimeoutMs: 105000, stallRecoveryAttempts: 2
+    },
     fast: {
       label: 'Fast',
       tickDelayMinMs: 800, tickDelayMaxMs: 2400,
@@ -80,6 +89,17 @@
       backtrackChancePercent: 2,
       stallTimeoutMs: 90000, stallRecoveryAttempts: 1,
       warning: 'Aggressive timing increases the chance of rate limiting and missed posts.'
+    },
+    turbo: {
+      label: 'Turbo',
+      tickDelayMinMs: 400, tickDelayMaxMs: 1200,
+      scrollMinPx: 900, scrollMaxPx: 1800,
+      restEveryPosts: 160, restCountJitterPercent: 15,
+      restMinMs: 8000, restMaxMs: 20000,
+      readingPauseChancePercent: 1, readingPauseMinMs: 3000, readingPauseMaxMs: 8000,
+      backtrackChancePercent: 1,
+      stallTimeoutMs: 60000, stallRecoveryAttempts: 1,
+      warning: 'Very aggressive timing can miss posts or trigger X rate limits.'
     },
     custom: { label: 'Custom' }
   };
