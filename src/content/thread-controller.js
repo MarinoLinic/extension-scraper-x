@@ -107,6 +107,7 @@
       const kind = job.kind === 'quote' ? 'quote' : 'thread';
       const diag = {
         kind,
+        mode: job.mode || kind,
         statusId: job.statusId || this.expectedStatusId(),
         passes: 0,
         postsFound: 0,
@@ -127,9 +128,10 @@
           return;
         }
         if (!rendered) {
-          diag.blockedReason = classifyBlockedSurface(document);
-          diag.error = diag.blockedReason
-            ? 'X showed ' + diag.blockedReason + ' before posts rendered'
+          const blockedReason = classifyBlockedSurface(document);
+          diag.blockedReason = blockedReason || 'render_timeout';
+          diag.error = blockedReason
+            ? 'X showed ' + blockedReason + ' before posts rendered'
             : 'no posts rendered within ' + (RENDER_WAIT_MS / 1000) + 's';
           await this.finish(diag);
           return;
@@ -211,11 +213,13 @@
           diag.error = 'requested status ' + diag.statusId + ' not observed in rendered conversation';
           diag.warnings.push('The focused post may be deleted, protected, or buried under unloaded replies.');
         } else if (diag.incompleteCounter) {
-          diag.warnings.push('Numbered thread counter suggests a missing post (saw max ' +
-            diag.incompleteCounter.seen + ' of ' + diag.incompleteCounter.total + ').');
+          diag.warnings.push('Numbered thread counter suggests missing parts ' +
+            diag.incompleteCounter.missing.join(', ') + ' (saw ' + diag.incompleteCounter.seen +
+            ' of ' + diag.incompleteCounter.total + ').');
         }
         await this.finish(diag, chain);
       } catch (e) {
+        diag.blockedReason = diag.blockedReason || 'worker_error';
         diag.error = String(e && e.message || e);
         await this.finish(diag);
       } finally {
@@ -234,19 +238,22 @@
     }
 
     counterIncompleteness(chain) {
-      let maxTotal = 0;
-      let maxSeen = 0;
-      for (const p of chain) {
-        const c = XA.extractor.numberedCounter(p.text);
-        if (c) {
-          maxTotal = Math.max(maxTotal, c.total);
-          maxSeen = Math.max(maxSeen, c.n);
-        }
+      const byTotal = new Map();
+      for (const post of chain) {
+        const counter = XA.extractor.numberedCounter(post.text);
+        if (!counter) continue;
+        if (!byTotal.has(counter.total)) byTotal.set(counter.total, new Set());
+        byTotal.get(counter.total).add(counter.n);
       }
-      if (maxTotal >= 2 && maxSeen < maxTotal) {
-        return { total: maxTotal, seen: maxSeen };
+      const strongest = Array.from(byTotal.entries())
+        .sort((a, b) => b[1].size - a[1].size || b[0] - a[0])[0];
+      if (!strongest) return null;
+      const [total, seenParts] = strongest;
+      const missing = [];
+      for (let n = 1; n <= total; n++) {
+        if (!seenParts.has(n)) missing.push(n);
       }
-      return null;
+      return missing.length ? { total, seen: seenParts.size, missing } : null;
     }
 
     async finish(diag, chain) {
@@ -272,6 +279,22 @@
     }
   }
 
+  function handleThreadJobMessage(worker, msg, sendResponse) {
+    if (msg.action === 'cancel') {
+      worker.requestCancel();
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (worker.busy) {
+      sendResponse({ ok: false, error: 'fulfillment worker is already busy' });
+      return false;
+    }
+    worker.processJob(msg.job)
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
+    return true;
+  }
+
   function boot() {
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) return null;
     const worker = new ThreadWorker();
@@ -280,15 +303,7 @@
       if (!msg || !msg.type) return false;
       const m = M();
       if (msg.type === m.XAR_THREAD_JOB) {
-        if (msg.action === 'cancel') {
-          worker.requestCancel();
-          sendResponse({ ok: true });
-          return false;
-        }
-        worker.processJob(msg.job)
-          .then(() => sendResponse({ ok: true }))
-          .catch((e) => sendResponse({ ok: false, error: String(e && e.message || e) }));
-        return true;
+        return handleThreadJobMessage(worker, msg, sendResponse);
       }
       return false;
     });
@@ -305,5 +320,7 @@
   }
 
   XA.content.ThreadWorker = ThreadWorker;
-  XA.content.threadHelpers = { classifyBlockedSurface, normalizeQuoteText, quoteMismatch, MAX_QUOTE_PASSES };
+  XA.content.threadHelpers = {
+    classifyBlockedSurface, normalizeQuoteText, quoteMismatch, handleThreadJobMessage, MAX_QUOTE_PASSES
+  };
 })();

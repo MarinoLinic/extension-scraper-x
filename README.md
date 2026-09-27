@@ -316,17 +316,23 @@ Threads, Quoted posts, or both (both are checked by default), a per-session limi
 Thread candidates come from recorded `thread_candidates` and the `is_thread` / `thread_id`
 relationship. Quote candidates come from every captured
 `quote_context.quoted_tweet_url` with a recoverable status ID; identical quoted status IDs
-are deduplicated, and all referring parent posts are retained. Quote contexts without a usable
-status URL are counted and shown, but are not visited. Existing/imported thread posts marked
-`thread_scraped` and quote contexts marked `quoted_fetched` or legacy
-`quoted_text_backfilled` are recognized as completed, so they are not redundantly fetched.
+are deduplicated, and all referring parent posts are retained. Only HTTPS status URLs on
+`x.com` or `twitter.com` are eligible for navigation. A quote with no usable permalink is
+repaired in two bounded stages: first visit its parent to discover the permalink, then fetch
+the quoted post in a later session. If the parent status URL is unsafe or unavailable, the
+quote URL remains counted and no link is opened. Existing/imported thread posts marked
+`thread_scraped` and quote contexts marked `quoted_fetched` are recognized as completed and
+not redundantly fetched. The legacy `quoted_text_backfilled` marker also avoids repeat fetches
+when a usable quote URL exists; a missing URL is still discovered before a later fetch.
 
 Starting a session opens at most **one dedicated worker window/tab** and navigates it serially
 through the selected links; it never opens one tab per candidate and never navigates the
-primary source tab. The order is deterministic by archive capture order and then candidate
-kind. The selected job IDs belong to that session only. A later user-started session skips
-completed/skipped jobs and retries pending, failed, incomplete, paused, or stale work. Only
-one fulfillment session can run extension-wide at once.
+primary source tab. Stitched and imported thread members share one inferred root visit. The
+order is deterministic by archive capture order and then candidate kind; never-attempted links
+are selected before retries so failures do not starve fresh candidates. The selected job IDs
+belong to that session only. A later user-started session skips completed/skipped jobs and
+retries pending, failed, incomplete, paused, or stale work. Only one fulfillment session can
+run extension-wide at once.
 
 Every page result is saved to the local IndexedDB archive immediately. Thread results enrich
 posts with `capture_context: "thread"` while preserving richer existing values. Quote
@@ -338,10 +344,13 @@ Job state, attempts, result counts, and diagnostics are persisted and shown in t
 
 Use **Pause after current page** to let the current page finish and save its result, then
 stop before the next link. Primary capture cannot resume while fulfillment is active or while
-its paused current page is still settling. If X shows a login, rate-limit, or error surface, the worker pauses
-automatically and records the reason rather
-than continuing to request more links. This pacing lowers request pressure but cannot
-prevent rate limits. The persisted session can resume after service-worker restarts; a user
+its paused current page is still settling. If X shows a login, rate-limit, or error surface, the
+worker pauses automatically and records the reason rather than continuing to request more links.
+Worker or content-script infrastructure failures also
+pause the batch instead of cascading through every candidate; page-level incomplete/failed
+results remain reviewable and do not necessarily stop the session. Delays under 30 seconds use
+a local wake timer backed by a durable alarm scheduled at least 30 seconds out. This pacing
+lowers request pressure but cannot prevent rate limits. The persisted session can resume after service-worker restarts; a user
 closed worker tab pauses the session instead of silently opening a replacement. When a session
 finishes, its worker tab returns to the archive page. Export buttons, including **Download
 updated JSON + HTML**, always read the latest locally saved archive.

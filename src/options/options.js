@@ -357,7 +357,7 @@ function kv(k, v) {
 async function selectRun(runId) {
   selectedRunId = runId;
   await loadArchives();
-  const resp = await send({ type: M.GET_RUN, runId });
+  const resp = await send({ type: M.GET_RUN, runId, includePosts: false, includeThreadJobs: false });
   const detail = $('arch-detail');
   detail.textContent = '';
   if (!resp || !resp.ok || !resp.run) {
@@ -517,7 +517,8 @@ async function selectRun(runId) {
   jobsDetails.appendChild(el('summary', null, 'Candidate and job details (' + jobs.length + ')'));
   for (const job of jobs.slice(0, 150)) {
     const row = el('div', 'fulfillment-job');
-    const link = el('a', null, (job.kind || 'thread') + ' · ' + job.statusId);
+    const label = job.mode === 'quote_discovery' ? 'quote discovery' : (job.kind || 'thread');
+    const link = el('a', null, label + ' · ' + job.statusId);
     link.href = job.url;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';

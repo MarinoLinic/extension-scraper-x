@@ -201,6 +201,29 @@ describe('extractor — status page', () => {
 });
 
 describe('extractor — stitching', () => {
+  it('uses one shared stitched root in candidate URLs across capture batches', () => {
+    mountFixture('status.html');
+    const articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+    document.body.replaceChildren(articles[0].cloneNode(true), articles[1].cloneNode(true));
+    const conversationUrl = 'https://x.com/alice/status/3000000000000000001';
+    const first = XA.extractor.extractVisible(document, ctx({
+      author: 'alice', allowFocusedRoot: true, conversationUrl
+    }));
+    const root = first.posts.find((post) => post.text.includes('part one')).tweet_url;
+    expect(first.tail.threadRootUrl).toBe(root);
+    for (const post of first.posts) {
+      expect(post.thread_candidates.find((candidate) => candidate.reason === 'stitched-chain').url).toBe(root);
+    }
+
+    document.body.replaceChildren(articles[3].cloneNode(true));
+    const next = XA.extractor.extractVisible(document, ctx({
+      author: 'alice', allowFocusedRoot: true, conversationUrl, prevTail: first.tail
+    }));
+    const continued = next.posts.find((post) => post.text.includes('part three'));
+    expect(continued.thread_candidates.find((candidate) => candidate.reason === 'stitched-chain').url).toBe(root);
+    expect(next.tail.threadRootUrl).toBe(root);
+  });
+
   it('marks adjacent same-author posts inside the gap window', () => {
     mountFixture('status.html');
     const { posts } = XA.extractor.extractVisible(document, ctx({

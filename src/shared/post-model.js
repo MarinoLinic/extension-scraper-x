@@ -139,8 +139,14 @@
         out[k] = u().dedupe([...(a[k] || []), ...v]);
       } else if (k === 'quoted_text') {
         out[k] = String(v || '').length > String(a[k] || '').length ? v : a[k];
+      } else if (k === 'quoted_tweet_url' && b.quoted_tweet_url_verified && v) {
+        out[k] = v;
+      } else if (k === 'quoted_tweet_url_verified') {
+        out[k] = !!(a[k] || v);
       } else if (k === 'quoted_fetched') {
         out[k] = !!(a[k] || v);
+      } else if (k === 'quoted_text_backfilled' && v === false) {
+        out[k] = false;
       } else if (k === 'quoted_fetched_at') {
         out[k] = [a[k], v].filter(Boolean).sort().pop() || null;
       } else if (v != null && v !== '' && (a[k] == null || a[k] === '')) {

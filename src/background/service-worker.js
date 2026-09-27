@@ -136,16 +136,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case M.GET_RUN:
       respond(sendResponse, (async () => {
         const run = await XA.db.getRun(msg.runId);
-        const posts = run ? await XA.db.getPosts(msg.runId) : [];
-        const threadJobs = run ? await XA.db.listThreadJobs(msg.runId) : [];
-        return { ok: !!run, run, postCount: posts.length, posts, threadJobs };
+        const includePosts = msg.includePosts !== false;
+        const includeThreadJobs = msg.includeThreadJobs !== false;
+        const posts = run && includePosts ? await XA.db.getPosts(msg.runId) : [];
+        const postCount = run
+          ? (includePosts ? posts.length : await XA.db.countPosts(msg.runId)) : 0;
+        const threadJobs = run && includeThreadJobs ? await XA.db.listThreadJobs(msg.runId) : [];
+        return { ok: !!run, run, postCount, posts, threadJobs };
       })());
       return true;
     case M.LIST_RUNS:
       respond(sendResponse, (async () => ({ ok: true, runs: await XA.db.listRuns(msg.filters || {}) }))());
       return true;
     case M.DELETE_RUN:
-      respond(sendResponse, XA.runService.deleteRun(msg));
+      respond(sendResponse, (async () => {
+        await XA.fulfillmentService.cancelForDelete(msg.runId);
+        return XA.runService.deleteRun(msg);
+      })());
       return true;
     case M.IMPORT_ARCHIVE:
       respond(sendResponse, handleImport(msg));

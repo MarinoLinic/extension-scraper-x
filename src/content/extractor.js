@@ -492,6 +492,33 @@
     return { roles, continuedFrom: null };
   }
 
+  function stitchRootsFor(ordered, roles, prevTail, continuedFrom, conversationUrl) {
+    const roots = new Map();
+    const urlFor = (item, index) => postUrlFor(item.el) || (index === 0 ? conversationUrl : null);
+    let currentRoot = continuedFrom
+      ? (prevTail && prevTail.threadRootUrl) || continuedFrom : null;
+    for (let i = 0; i < ordered.length; i++) {
+      const item = ordered[i];
+      const role = roles.get(item.el);
+      if (!role) {
+        currentRoot = null;
+        continue;
+      }
+      if (role === 'first') {
+        currentRoot = i === 0 && continuedFrom
+          ? (prevTail && prevTail.threadRootUrl) || continuedFrom
+          : urlFor(item, i);
+      } else if (!currentRoot) {
+        currentRoot = i === 0 && continuedFrom
+          ? (prevTail && prevTail.threadRootUrl) || continuedFrom
+          : urlFor(item, i);
+      }
+      roots.set(item.el, currentRoot);
+      if (role === 'last') currentRoot = null;
+    }
+    return roots;
+  }
+
   function extractVisible(root, ctx) {
     const c = ctx || {};
     const scope = root || document;
@@ -501,6 +528,7 @@
       el, handle: articleHandle(el), ts: articleTimestamp(el)
     }));
     const { roles, continuedFrom } = stitchPairs(ordered, c.prevTail);
+    const stitchRoots = stitchRootsFor(ordered, roles, c.prevTail, continuedFrom, c.conversationUrl);
 
     const posts = [];
     const seen = new Set();
@@ -511,12 +539,16 @@
       seen.add(post.id);
       const stitchRole = roles.get(el);
       if (stitchRole) {
+        const stitchRoot = stitchRoots.get(el) || post.tweet_url;
         post.is_thread = true;
         post.thread_role = stitchRole === 'first' ? 'root' : 'reply';
+        post.thread_id = post.thread_id || stitchRoot;
         post.is_self_reply = post.is_self_reply || stitchRole !== 'first';
-        if (!post.thread_candidates.some((t) => t.reason === 'stitched-chain')) {
+        const stitchedCandidate = post.thread_candidates.find((candidate) => candidate.reason === 'stitched-chain');
+        if (stitchedCandidate) stitchedCandidate.url = stitchRoot;
+        else {
           post.thread_candidates.push({
-            url: post.tweet_url, reason: 'stitched-chain', confidence: 'low'
+            url: stitchRoot, reason: 'stitched-chain', confidence: 'low'
           });
         }
       }
@@ -527,7 +559,8 @@
     const newTail = tail ? {
       handle: tail.handle,
       ts: tail.ts,
-      url: postUrlFor(tail.el)
+      url: postUrlFor(tail.el),
+      threadRootUrl: stitchRoots.get(tail.el) || null
     } : null;
 
     return { posts, tail: newTail, continuedFrom };
