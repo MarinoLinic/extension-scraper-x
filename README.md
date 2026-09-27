@@ -2,7 +2,7 @@
 
 A local-only **Manifest V3 Chrome extension** that archives X (Twitter) timelines to durable
 on-device storage and exports them as clean JSON and self-contained HTML reports, with an
-optional media ZIP and an assisted, best-effort thread-expansion phase.
+optional media ZIP and a user-controlled incremental archive-fulfillment phase for threads and quoted posts.
 
 X Archive is a **DOM-based JavaScript extension**: it reads the visible rendered page of your
 own logged-in X session. It contains **no Python**, uses **no copied cookies, tokens, or
@@ -30,8 +30,8 @@ or delete it.
   self-contained, searchable/filterable HTML report; tokenized filenames.
 - **Optional media ZIP** — explicit opt-in; downloads post/quote/card/avatar images with a
   manifest that records every file or failure, plus an offline HTML report.
-- **Assisted thread expansion** — a separate, reviewable, user-triggered phase that visits
-  candidate threads in one dedicated worker window and merges the findings.
+- **Build upon an archive** — a separate, user-triggered phase that serially visits selected
+  thread and quoted-post links in one reused worker window, saving enrichments locally as they arrive.
 - **Flexible import** — accepts archive envelopes and raw post arrays, normalizing and
   deduplicating them with the same merge rules used during capture.
 - **Privacy by construction** — no telemetry, no servers, no remote code, minimal
@@ -74,7 +74,7 @@ Open the page you want to archive while logged in to X:
 | List | `x.com/i/lists/<id>` |
 | Search | `x.com/search?q=…` |
 | Home / Explore / other tweet timelines | `x.com/home`, `x.com/explore`, … |
-| Status page | only visited by the **thread worker**, never a primary source |
+| Status page | visited by the **fulfillment worker**, never a primary source |
 
 Pages that cannot be archived (DMs, settings, compose, login, followers lists, status
 pages, other `/i/*` sections) are rejected in the popup with an explicit reason.
@@ -230,9 +230,11 @@ archived files. A manual **Media ZIP** button exists per archive regardless of t
 
 The options page **Archives** tab lists every run with search/filter by text, type and
 state. Per-archive detail shows source key/URL, state and stop reason, post count,
-timestamps, warnings, and a settings snapshot. Actions: **Export JSON / HTML / both**,
+timestamps, warnings, and a settings snapshot. Actions include **Export JSON / HTML / both**,
 **Media ZIP**, **Open source to resume** (unfinished runs), **Delete** (confirmed),
-**Import JSON**, and the assisted-thread review queue (below).
+**Import JSON**, and **Build upon this archive**. The build card summarizes thread and quote
+candidates, unavailable quote URLs, completed work, remaining work and failures. It also
+provides a latest-version JSON + HTML download.
 
 Storage usage is displayed; uninstalling the extension deletes all local archives.
 
@@ -252,6 +254,8 @@ Default export is an **archive envelope**:
     "stopReason": "completed",
     "settings": { },
     "stats": { "posts": 142, "seq": 142, "batches": 21 },
+    "fulfillment": null,
+    "threadSummary": null,
     "warnings": []
   },
   "posts": [ ]
@@ -264,7 +268,12 @@ Each post contains core fields (`tweet_url`, `name`, `handle`, `timestamp_iso`,
 (`{url, type, alt, poster, permalink}`), `capture_context` (`timeline | thread | import`),
 `source_key`, `captured_at`/`updated_at`, thread fields (`is_thread`, `thread_role`,
 `thread_id`, `is_self_reply`, `show_thread_link`, `thread_candidates`, `thread_scraped`),
-and `warnings`. Unavailable metrics are `null`, not `0`.
+and `warnings`. Unavailable metrics are `null`, not `0`. Quote contexts retain their
+captured `quoted_*` fields; a fulfilled quote adds `quoted_fetched: true` and
+`quoted_fetched_at` after the exact quoted post is identified. The fetched quote is merged
+into each referring parent post's `quote_context`, not added as a top-level archive post.
+Archive metadata includes the persisted `fulfillment` session and `threadSummary` when present;
+`schemaVersion` remains 1.
 
 **Import** accepts both archive envelopes and raw post arrays.
 Imports create a new run (`stopReason: imported`), inferring the profile source when one
@@ -297,33 +306,49 @@ URL for anything not downloaded. Extension is inferred from `Content-Type`, then
 
 ---
 
-## Assisted thread expansion (best effort)
+## Build upon this archive
 
-Thread expansion is a **separate, explicitly started** phase — never part of the primary
-loop and it can only run while the primary run is paused or finished.
+Archive fulfillment is a separate, explicitly started phase. The primary archive must be
+paused or finished first. In the archive detail's **Build upon this archive** card, choose
+Threads, Quoted posts, or both (both are checked by default), a per-session limit from 1 to
+100 (default 10), and Cautious, Balanced, or Brisk pacing (Cautious by default).
 
-1. During profile capture, candidates are recorded with confidence:
-   explicit **"Show this thread"** links (high), visible **self-replies** (high),
-   **numbered counters** like `3/10` (medium), and adjacent same-author posts within a
-   0–30 minute gap (low heuristic).
-2. The archive detail page shows the reviewable candidate list — deselect anything you
-   don't want visited. Nothing is auto-visited.
-3. **Expand selected threads** opens one dedicated worker window that processes one status
-   URL at a time. It never touches or navigates your source tab.
-4. For each candidate the worker waits for render, accumulates articles across bounded
-   scroll passes (DOM virtualization-safe), falls back to the page URL for the focused
-   root (which has no `<a>` around its `<time>`), keeps only the conversation author's
-   posts, and **requires the requested status id to be observed before reporting success**.
-   Numbered counters that never complete (e.g. saw `7/10` but never `10/10`) are flagged.
-5. Results are upserted with `capture_context: "thread"` — thread data can enrich but
-   **never erases** richer primary fields. Each job's state and diagnostics persist after
-   every page, so pauses/crashes don't lose progress.
-6. When the queue finishes, the worker tab lands on the archive's summary page instead of
-   silently closing.
+Thread candidates come from recorded `thread_candidates` and the `is_thread` / `thread_id`
+relationship. Quote candidates come from every captured
+`quote_context.quoted_tweet_url` with a recoverable status ID; identical quoted status IDs
+are deduplicated, and all referring parent posts are retained. Quote contexts without a usable
+status URL are counted and shown, but are not visited. Existing/imported thread posts marked
+`thread_scraped` and quote contexts marked `quoted_fetched` or legacy
+`quoted_text_backfilled` are recognized as completed, so they are not redundantly fetched.
 
-**Best effort**: X defers or hides replies, DOM structures change, and protected/deleted
-posts can't be recovered. Failed candidates carry explicit diagnostics (timeout, missing
-status id, login surface) in the job list — nothing silently pretends to succeed.
+Starting a session opens at most **one dedicated worker window/tab** and navigates it serially
+through the selected links; it never opens one tab per candidate and never navigates the
+primary source tab. The order is deterministic by archive capture order and then candidate
+kind. The selected job IDs belong to that session only. A later user-started session skips
+completed/skipped jobs and retries pending, failed, incomplete, paused, or stale work. Only
+one fulfillment session can run extension-wide at once.
+
+Every page result is saved to the local IndexedDB archive immediately. Thread results enrich
+posts with `capture_context: "thread"` while preserving richer existing values. Quote
+fulfillment verifies the requested post's ID and supplied author, timestamp, and meaningful
+text prefix; the exact fetched quote is merged into each referring parent's `quote_context`
+(including media and `quoted_fetched` / `quoted_fetched_at`) and is not inserted as a new
+archive post. Numbered thread counters that indicate missing posts remain marked incomplete.
+Job state, attempts, result counts, and diagnostics are persisted and shown in the card.
+
+Use **Pause after current page** to let the current page finish and save its result, then
+stop before the next link. Primary capture cannot resume while fulfillment is active or while
+its paused current page is still settling. If X shows a login, rate-limit, or error surface, the worker pauses
+automatically and records the reason rather
+than continuing to request more links. This pacing lowers request pressure but cannot
+prevent rate limits. The persisted session can resume after service-worker restarts; a user
+closed worker tab pauses the session instead of silently opening a replacement. When a session
+finishes, its worker tab returns to the archive page. Export buttons, including **Download
+updated JSON + HTML**, always read the latest locally saved archive.
+
+X can defer or hide replies, DOM structures can change, and protected or deleted posts may
+be unreachable. Failed or incomplete candidates carry diagnostics (for example timeout,
+missing status ID, metadata mismatch, or blocked surface); review them before retrying.
 
 ---
 
@@ -335,6 +360,7 @@ status id, login surface) in the job list — nothing silently pretends to succe
 | `unlimitedStorage` | large archives exceed normal IndexedDB quotas and must not be evicted |
 | `downloads` | named JSON/HTML/ZIP downloads |
 | `offscreen` | create Blob URLs and run long exports outside the short-lived service worker |
+| `alarms` | persist one-time fulfillment dispatch and watchdog scheduling across worker suspension |
 | `x.com`, `twitter.com` (host) | content scripts that read the visible DOM |
 | `pbs.twimg.com` (**optional**) | only requested, via a user gesture, when you enable auto media ZIP or download media |
 
@@ -370,8 +396,9 @@ Uninstalling the extension removes everything it stored.
   required to fetch images.
 - *Export produced fewer posts* — check the run's `stopReason` and warnings; `limited` and
   `error` states mean capture is incomplete.
-- *Thread job failed* — read the diagnostic: `missing status id`, `timeout`, or
-  `login surface`; retrying from the review list is safe (dedupe by status id).
+- *Fulfillment paused or failed* — open the Build upon job details and inspect its persisted
+  diagnostic (for example blocked surface, timeout, missing status ID, or quote metadata mismatch).
+  After addressing login/rate-limit/error conditions, start another bounded session to retry eligible jobs.
 
 ## Development
 
@@ -418,9 +445,11 @@ selectors, and re-run `npm test`.
 ### Manual Chrome checklist
 
 Automated tests cover pure logic and DOM fixtures; the following remain manual in a real
-browser: load unpacked with no manifest errors; detect each source type; Start → Rest →
-Pause → Resume → Stop across popup/badge/overlay; close popup mid-run; reload recovery and
-route-change pause; each limit/stop reason; JSON/HTML export filenames; HTML
-search/filter/sort; raw-array import round-trip; media permission grant + ZIP + offline links
-+ a failed image; thread queue review/run/cancel; overlay default on, media auto-ZIP
-default off.
+browser: load unpacked with no manifest errors (including the `alarms` permission); detect each
+source type; Start → Rest → Pause → Resume → Stop across popup/badge/overlay; close popup
+mid-run; reload recovery and route-change pause; each limit/stop reason; JSON/HTML export
+filenames; HTML search/filter/sort; raw-array and envelope import round-trip; media permission
+grant + ZIP + offline links + a failed image; Build upon threads, quotes, mixed scope, max and
+pacing controls; verify only one worker tab is reused serially; pause/cancel, blocked-surface
+auto-pause, service-worker restart recovery, and updated JSON/HTML downloads; overlay default
+on, media auto-ZIP default off.

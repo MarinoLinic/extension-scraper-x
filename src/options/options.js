@@ -354,29 +354,6 @@ function kv(k, v) {
   return row;
 }
 
-function collectCandidates(posts) {
-  const map = new Map();
-  for (const p of posts || []) {
-    for (const c of p.thread_candidates || []) {
-      const sid = XA.util.statusIdFromUrl(c.url);
-      if (!sid) continue;
-      if (!map.has(sid)) map.set(sid, { statusId: sid, url: c.url, reasons: new Set(), confidence: c.confidence });
-      const e = map.get(sid);
-      e.reasons.add(c.reason);
-      if (c.confidence === 'high' || (c.confidence === 'medium' && e.confidence !== 'high')) {
-        e.confidence = c.confidence;
-      }
-    }
-    if (p.is_thread && p.thread_id) {
-      const sid = XA.util.statusIdFromUrl(p.thread_id);
-      if (sid && !map.has(sid)) {
-        map.set(sid, { statusId: sid, url: p.thread_id, reasons: new Set(['thread-member']), confidence: 'medium' });
-      }
-    }
-  }
-  return Array.from(map.values());
-}
-
 async function selectRun(runId) {
   selectedRunId = runId;
   await loadArchives();
@@ -388,7 +365,6 @@ async function selectRun(runId) {
     return;
   }
   const run = resp.run;
-  const posts = resp.posts || [];
   detail.appendChild(el('h3', null, (run.source && run.source.label) || run.id));
   detail.appendChild(kv('Run id', run.id));
   detail.appendChild(kv('Source key', run.source && run.source.key));
@@ -428,89 +404,192 @@ async function selectRun(runId) {
   mk('Delete', () => deleteRun(run), 'danger');
   detail.appendChild(actions);
 
-  const cand = collectCandidates(posts);
-  detail.appendChild(el('h3', null, 'Assisted thread expansion (best effort)'));
-  const jobStatus = await send({ type: M.LIST_THREAD_JOBS, runId });
-  const jobs = (jobStatus && jobStatus.jobs) || [];
-  if (jobStatus && jobStatus.running) {
-    detail.appendChild(el('p', 'note', 'Thread queue is running in a dedicated window…'));
+  detail.appendChild(el('h3', null, 'Build upon this archive'));
+  const jobStatus = await send({ type: M.GET_FULFILLMENT_STATUS, runId, refreshCandidates: true });
+  const status = jobStatus || {};
+  const jobs = status.jobs || [];
+  const card = el('section', 'fulfillment-card');
+  card.appendChild(el('p', 'fulfillment-copy',
+    'Visit one candidate link at a time in one reused worker window. Changes save locally immediately, and export buttons always download the latest improved version. Cautious pacing lowers request pressure but cannot guarantee against rate limits.'));
+  const summary = el('div', 'fulfillment-summary');
+  const count = (id, label, value) => {
+    const item = el('span', null, label + value);
+    item.id = id;
+    return item;
+  };
+  summary.append(
+    count('fulfillment-thread-count', 'Thread candidates: ', status.threadCandidates || 0),
+    count('fulfillment-quote-count', 'Quoted-post candidates: ', status.quoteCandidates || 0),
+    count('fulfillment-missing-count', 'Quote URLs unavailable: ', status.missingQuoteUrls || 0),
+    count('fulfillment-done-count', 'Done: ', status.done || 0),
+    count('fulfillment-remaining-count', 'Remaining: ', status.remaining || 0),
+    count('fulfillment-failure-count', 'Failed / incomplete: ', (status.failed || 0) + ' / ' + (status.incomplete || 0))
+  );
+  card.appendChild(summary);
+  const fulfillment = status.fulfillment;
+  const isRunning = !!(fulfillment && fulfillment.state === 'running');
+  const isSettling = !!(fulfillment && fulfillment.currentJobId);
+  const controls = el('div', 'fulfillment-controls');
+  const threadsLabel = el('label', null, 'Threads');
+  const threads = el('input'); threads.type = 'checkbox'; threads.checked = true;
+  threadsLabel.prepend(threads);
+  const quotesLabel = el('label', null, 'Quoted posts');
+  const quotes = el('input'); quotes.type = 'checkbox'; quotes.checked = true;
+  quotesLabel.prepend(quotes);
+  const maxLabel = el('label', null, 'Max links');
+  const maxInput = el('input'); maxInput.type = 'number'; maxInput.min = '1'; maxInput.max = '100'; maxInput.value = '10';
+  maxLabel.appendChild(maxInput);
+  const paceLabel = el('label', null, 'Pace');
+  const pace = el('select');
+  for (const [value, label] of [['cautious', 'Cautious'], ['balanced', 'Balanced'], ['brisk', 'Brisk']]) {
+    const option = el('option', null, label); option.value = value; pace.appendChild(option);
   }
-  if (!cand.length && !jobs.length) {
-    detail.appendChild(el('p', 'note',
-      'No thread candidates were recorded during this run. Candidates appear when posts show "Show this thread", self-replies, numbered counters, or stitched chains.'));
-  } else {
-    const list = el('div', 'thread-list');
-    const boxes = [];
-    const jobsByStatus = new Map(jobs.map((j) => [j.statusId, j]));
-    for (const c of cand) {
-      const row = el('div', 'thread-row');
-      const cb = el('input');
-      cb.type = 'checkbox';
-      cb.value = c.statusId;
-      const job = jobsByStatus.get(c.statusId);
-      cb.checked = !job || (job.state !== 'done' && job.state !== 'skipped');
-      cb.dataset.candidate = '1';
-      row.appendChild(cb);
-      const a = el('a', null, c.statusId);
-      a.href = c.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.style.color = '#1d9bf0';
-      row.appendChild(a);
-      row.appendChild(el('span', 'conf ' + c.confidence, c.confidence + ' · ' + Array.from(c.reasons).join(', ')));
-      if (job) {
-        const tag = el('span', 'jobstate ' + job.state, job.state);
-        if (job.diagnostics && job.diagnostics.error) tag.title = job.diagnostics.error;
-        row.appendChild(tag);
-      }
-      list.appendChild(row);
-      boxes.push(cb);
-    }
-    detail.appendChild(list);
-    const qbtns = el('div', 'detail-actions');
-    const startB = el('button', 'primary', 'Expand selected threads');
-    startB.addEventListener('click', async () => {
-      const ids = boxes.filter((b) => b.checked).map((b) => b.value);
-      if (!ids.length) return;
-      startB.disabled = true;
-      const r = await send({ type: M.START_THREAD_QUEUE, runId, candidateIds: ids });
-      if (!r || !r.ok) {
-        alert((r && r.error) || 'Could not start thread queue');
-        startB.disabled = false;
-      } else {
-        pollJobs(runId);
-      }
+  paceLabel.appendChild(pace);
+  controls.append(threadsLabel, quotesLabel, maxLabel, paceLabel);
+  threads.disabled = isRunning || isSettling;
+  quotes.disabled = isRunning || isSettling;
+  maxInput.disabled = isRunning || isSettling;
+  pace.disabled = isRunning || isSettling;
+  const start = el('button', 'primary');
+  start.id = 'fulfillment-start';
+  const updateStartLabel = () => {
+    const value = Math.min(100, Math.max(1, Math.round(Number(maxInput.value) || 10)));
+    start.textContent = 'Build next ' + value + ' links';
+  };
+  maxInput.addEventListener('input', updateStartLabel);
+  updateStartLabel();
+  const canStart = ['paused', 'completed', 'limited', 'error'].includes(run.state);
+  start.disabled = isRunning || isSettling || !canStart || !status.remaining;
+  start.addEventListener('click', async () => {
+    const kinds = [];
+    if (threads.checked) kinds.push('thread');
+    if (quotes.checked) kinds.push('quote');
+    if (!kinds.length) { alert('Choose Threads, Quoted posts, or both.'); return; }
+    start.disabled = true;
+    errorLine.textContent = '';
+    const response = await send({
+      type: M.START_FULFILL_QUEUE, runId, kinds,
+      maxJobs: Number(maxInput.value) || 10, pace: pace.value
     });
-    const pauseB = el('button', '', 'Pause queue');
-    pauseB.addEventListener('click', async () => {
-      await send({ type: M.PAUSE_THREAD_QUEUE, runId });
-      selectRun(runId);
-    });
-    qbtns.append(startB, pauseB);
-    detail.appendChild(qbtns);
-  }
-  if (jobs.length) {
-    detail.appendChild(el('h3', null, 'Thread job results'));
-    for (const j of jobs.slice(0, 60)) {
-      const row = el('div', 'kv');
-      row.appendChild(el('span', 'k', j.statusId));
-      const diag = j.diagnostics || {};
-      row.appendChild(el('span', 'v',
-        j.state + ' — ' + (j.postsFound != null ? j.postsFound : '?') + ' posts' +
-        (diag.error ? ' — ' + diag.error : '') +
-        (diag.incompleteCounter ? ' — counter incomplete (' + diag.incompleteCounter.seen + '/' + diag.incompleteCounter.total + ')' : '')));
-      detail.appendChild(row);
+    if (!response || !response.ok) {
+      errorLine.textContent = (response && response.error) || 'Could not start fulfillment.';
+      const currentPageFinishing = response && response.error === 'current page is still finishing';
+      start.disabled = !!currentPageFinishing;
+      if (currentPageFinishing) pollJobs(runId);
+      return;
     }
+    pollJobs(runId);
+    selectRun(runId);
+  });
+  const pause = el('button', '', 'Pause after current page');
+  pause.disabled = !isRunning;
+  pause.addEventListener('click', async () => {
+    await send({ type: M.PAUSE_FULFILL_QUEUE, runId });
+    clearJobPoll();
+    selectRun(runId);
+  });
+  const download = el('button', '', 'Download updated JSON + HTML');
+  download.addEventListener('click', () => exportRun(run, ['json', 'html']));
+  controls.append(start, pause, download);
+  card.appendChild(controls);
+  const errorLine = el('p', 'fulfillment-error');
+  card.appendChild(errorLine);
+  const pauseReason = el('p', 'note warn');
+  pauseReason.id = 'fulfillment-pause-reason';
+  card.appendChild(pauseReason);
+  const currentJob = jobs.find((job) => job.id === (fulfillment && fulfillment.currentJobId));
+  const statusLine = el('p', 'fulfillment-status', currentJob
+    ? 'Current: ' + (currentJob.kind || 'thread') + ' ' + currentJob.statusId + ' · '
+    : '');
+  statusLine.id = 'fulfillment-progress';
+  if (fulfillment) {
+    statusLine.textContent += 'Processed ' + fulfillment.processed + ' / ' + fulfillment.total;
+    if (isRunning && fulfillment.nextAt && !fulfillment.currentJobId) {
+      statusLine.textContent += ' · Resting until ' + new Date(fulfillment.nextAt).toLocaleTimeString();
+    }
+  } else if (!currentJob) {
+    statusLine.textContent = 'No fulfillment session started.';
   }
+  card.appendChild(statusLine);
+  if (!jobs.length) card.appendChild(el('p', 'note',
+    'No thread or quoted-post candidates are available in this archive yet.'));
+  const jobsDetails = el('details', 'fulfillment-jobs');
+  jobsDetails.appendChild(el('summary', null, 'Candidate and job details (' + jobs.length + ')'));
+  for (const job of jobs.slice(0, 150)) {
+    const row = el('div', 'fulfillment-job');
+    const link = el('a', null, (job.kind || 'thread') + ' · ' + job.statusId);
+    link.href = job.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    row.appendChild(link);
+    row.appendChild(el('span', 'jobstate ' + job.state, job.state));
+    row.appendChild(el('span', 'note', (job.attempts || 0) + ' attempts · ' + (job.postsFound || 0) + ' posts found'));
+    if (job.diagnostics) {
+      const diagnostics = el('details', 'job-diagnostics');
+      diagnostics.appendChild(el('summary', null, job.diagnostics.error || job.diagnostics.blockedReason || 'Diagnostics'));
+      const pre = el('pre'); pre.textContent = JSON.stringify(job.diagnostics, null, 2);
+      diagnostics.appendChild(pre);
+      row.appendChild(diagnostics);
+    }
+    jobsDetails.appendChild(row);
+  }
+  card.appendChild(jobsDetails);
+  detail.appendChild(card);
+  updateLiveFulfillment(status);
+  if (isRunning || (fulfillment && fulfillment.state === 'paused' && fulfillment.currentJobId)) pollJobs(runId);
+}
+
+function updateLiveFulfillment(status) {
+  const countValues = [
+    ['fulfillment-thread-count', 'Thread candidates: ', status.threadCandidates || 0],
+    ['fulfillment-quote-count', 'Quoted-post candidates: ', status.quoteCandidates || 0],
+    ['fulfillment-missing-count', 'Quote URLs unavailable: ', status.missingQuoteUrls || 0],
+    ['fulfillment-done-count', 'Done: ', status.done || 0],
+    ['fulfillment-remaining-count', 'Remaining: ', status.remaining || 0],
+    ['fulfillment-failure-count', 'Failed / incomplete: ', (status.failed || 0) + ' / ' + (status.incomplete || 0)]
+  ];
+  for (const [id, label, value] of countValues) {
+    const node = $(id);
+    if (node) node.textContent = label + value;
+  }
+  const session = status.fulfillment;
+  const jobs = status.jobs || [];
+  const current = session && jobs.find((job) => job.id === session.currentJobId);
+  const progress = $('fulfillment-progress');
+  if (progress) {
+    const currentText = current ? 'Current: ' + (current.kind || 'thread') + ' ' + current.statusId + ' · ' : '';
+    const counts = session ? 'Processed ' + session.processed + ' / ' + session.total : 'No fulfillment session started.';
+    const next = session && session.state === 'running' && session.nextAt && !session.currentJobId
+      ? ' · Resting until ' + new Date(session.nextAt).toLocaleTimeString() : '';
+    progress.textContent = currentText + counts + next;
+  }
+  const pause = $('fulfillment-pause-reason');
+  if (pause) {
+    const reason = session && session.state === 'paused' && session.pauseReason;
+    pause.textContent = reason ? 'Paused: ' + reason : '';
+    pause.hidden = !reason;
+  }
+  const start = $('fulfillment-start');
+  if (start && session && (session.state === 'running' || session.currentJobId)) start.disabled = true;
+}
+
+function clearJobPoll() {
+  if (jobPollTimer) clearInterval(jobPollTimer);
+  jobPollTimer = null;
 }
 
 function pollJobs(runId) {
-  if (jobPollTimer) clearInterval(jobPollTimer);
+  clearJobPoll();
+  let terminalRefresh = false;
   jobPollTimer = setInterval(async () => {
-    if (selectedRunId !== runId) { clearInterval(jobPollTimer); return; }
-    const st = await send({ type: M.LIST_THREAD_JOBS, runId });
-    if (st && !st.running) {
-      clearInterval(jobPollTimer);
+    if (selectedRunId !== runId || terminalRefresh) { clearJobPoll(); return; }
+    const st = await send({ type: M.GET_FULFILLMENT_STATUS, runId });
+    if (!st) return;
+    updateLiveFulfillment(st);
+    const session = st.fulfillment;
+    if (!session || (session.state !== 'running' && !session.currentJobId)) {
+      terminalRefresh = true;
+      clearJobPoll();
       selectRun(runId);
     }
   }, 3000);

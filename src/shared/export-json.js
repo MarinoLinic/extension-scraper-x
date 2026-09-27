@@ -18,6 +18,8 @@
         stopReason: r.stopReason || null,
         settings: r.settings || null,
         stats: r.stats || null,
+        fulfillment: r.fulfillment || null,
+        threadSummary: r.threadSummary || null,
         warnings: r.warnings || []
       },
       posts: posts || []

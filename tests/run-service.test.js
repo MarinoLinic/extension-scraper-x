@@ -131,6 +131,28 @@ describe('content-ready auto-resume ownership', () => {
     expect(resp.resumeRun && resp.resumeRun.id).toBe(run.id);
   });
 
+  it.each([
+    ['running', null],
+    ['paused', 'run_current_job']
+  ])('does not auto-resume while fulfillment is %s and currentJobId is %s', async (fulfillmentState, currentJobId) => {
+    const run = makeRun({ state: 'paused', tabId: 10, fulfillment: {
+      state: fulfillmentState, currentJobId
+    } });
+    await db.createRun(run);
+    const response = await rs.contentReady({ source }, sender(20));
+    expect(response).toEqual({ ok: true, fulfillmentActive: true, runId: run.id });
+    expect((await db.getRun(run.id)).tabId).toBe(10);
+  });
+
+  it('allows auto-resume after fulfillment is paused with no current page', async () => {
+    const run = makeRun({ state: 'paused', tabId: 10, fulfillment: {
+      state: 'paused', currentJobId: null
+    } });
+    await db.createRun(run);
+    const response = await rs.contentReady({ source }, sender(10));
+    expect(response.resumeRun && response.resumeRun.id).toBe(run.id);
+  });
+
   it('does not auto-resume in another tab while the owner tab is alive', async () => {
     const run = makeRun({ state: 'paused', tabId: 10 });
     await db.createRun(run);
@@ -152,6 +174,20 @@ describe('content-ready auto-resume ownership', () => {
 });
 
 describe('explicit resume moves ownership', () => {
+  it('rejects resume while fulfillment is active before messaging its tab', async () => {
+    const run = makeRun({ state: 'paused', tabId: 10, fulfillment: {
+      state: 'running', currentJobId: null
+    } });
+    await db.createRun(run);
+    const response = await rs.resumeRun({ runId: run.id, tabId: 20 });
+    expect(response).toEqual({
+      ok: false,
+      error: 'Archive fulfillment is active; pause it and wait for the current page to finish first'
+    });
+    expect(sent).toHaveLength(0);
+    expect((await db.getRun(run.id)).tabId).toBe(10);
+  });
+
   it('pauses the old tab, reassigns, then resumes the new tab', async () => {
     const run = makeRun({ state: 'paused', tabId: 10 });
     await db.createRun(run);

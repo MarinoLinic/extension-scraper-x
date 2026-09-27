@@ -78,7 +78,7 @@ for (const html of htmlFiles) {
 }
 ok(`checked ${htmlFiles.length} html files for local references and remote scripts`);
 
-const allowedPerms = new Set(['storage', 'unlimitedStorage', 'downloads', 'offscreen']);
+const allowedPerms = new Set(['storage', 'unlimitedStorage', 'downloads', 'offscreen', 'alarms']);
 for (const p of manifest.permissions || []) {
   if (!allowedPerms.has(p)) notes.push('unexpected permission: ' + p);
 }
@@ -116,7 +116,8 @@ const messagesSrc = readFileSync(join(root, 'src', 'shared', 'messages.js'), 'ut
 const REQUIRED_MSGS = [
   'GET_TAB_CONTEXT', 'START_RUN', 'PAUSE_RUN', 'RESUME_RUN', 'STOP_RUN',
   'UPSERT_POSTS', 'EXPORT_RUN', 'GET_RUN', 'LIST_RUNS', 'DELETE_RUN',
-  'IMPORT_ARCHIVE', 'START_THREAD_QUEUE', 'PAUSE_THREAD_QUEUE'
+  'IMPORT_ARCHIVE', 'START_FULFILL_QUEUE', 'PAUSE_FULFILL_QUEUE',
+  'GET_FULFILLMENT_STATUS', 'START_THREAD_QUEUE', 'PAUSE_THREAD_QUEUE'
 ];
 for (const m of REQUIRED_MSGS) {
   if (!messagesSrc.includes(`'${m}'`)) fail('required message type missing from messages.js: ' + m);

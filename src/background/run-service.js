@@ -39,6 +39,11 @@
     });
   }
 
+  function fulfillmentBusy(run) {
+    const f = run && run.fulfillment;
+    return !!(f && (f.state === 'running' || f.currentJobId));
+  }
+
   async function setBadge(tabId, run, runtime) {
     try {
       if (!chrome.action) return;
@@ -127,6 +132,9 @@
   async function resumeRun(msg) {
     const run = await XA.db.getRun(msg.runId);
     if (!run) return { ok: false, error: 'run not found' };
+    if (fulfillmentBusy(run)) {
+      return { ok: false, error: 'Archive fulfillment is active; pause it and wait for the current page to finish first' };
+    }
     if (!XA.messages.UNFINISHED_STATES.includes(run.state)) {
       return { ok: false, error: 'run is already finished' };
     }
@@ -297,7 +305,9 @@
     if (!source || !source.supported) return { ok: true };
     const run = await XA.db.findUnfinishedRun(source.key);
     const tabId = senderTabId(sender);
-    if (!run || tabId == null || run.state === 'error') return { ok: true };
+    if (!run || run.state === 'error') return { ok: true };
+    if (fulfillmentBusy(run)) return { ok: true, fulfillmentActive: true, runId: run.id };
+    if (tabId == null) return { ok: true };
     const resumable = ['paused', 'running', 'resting'].includes(run.state);
     if (!resumable) return { ok: true };
     if (run.tabId === tabId) {

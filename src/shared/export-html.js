@@ -137,7 +137,7 @@
     let inner = '<div class="xa-quote"><div class="xa-quote-author">' + avatar +
       esc(q.quoted_author_name || 'Quoted user') +
       (q.quoted_author_handle ? ' <span class="xa-handle">' + esc(q.quoted_author_handle) + '</span>' : '') +
-      '</div>' + link +
+      '</div>' + (q.quoted_fetched || q.quoted_text_backfilled ? '<span class="xa-banner xa-banner-ok">Quote completed</span>' : '') + link +
       '<div class="xa-quote-text">' + linkifyText(q.quoted_text || '') + '</div>';
     const qImgs = q.quoted_images || [];
     if (qImgs.length) {
@@ -333,6 +333,11 @@ apply();})();`;
     if (run && run.completedAt) meta.push('Completed: ' + run.completedAt);
     if (run && run.stopReason) meta.push('Stop reason: ' + run.stopReason);
     if (stats.posts != null) meta.push('Unique posts: ' + stats.posts);
+    const fulfillment = run && run.fulfillment;
+    if (fulfillment) {
+      meta.push('Build upon: ' + (fulfillment.done || 0) + ' done, ' +
+        (fulfillment.incomplete || 0) + ' incomplete, ' + (fulfillment.failed || 0) + ' failed');
+    }
     if (offline) meta.push('Offline copy — media bundled where downloaded.');
 
     let html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +

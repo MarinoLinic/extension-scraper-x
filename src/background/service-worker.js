@@ -27,7 +27,12 @@ chrome.runtime.onInstalled.addListener(configureStorage);
 chrome.runtime.onStartup.addListener(configureStorage);
 configureStorage();
 
-chrome.tabs.onRemoved.addListener((tabId) => XA.runService.tabRemoved(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  XA.runService.tabRemoved(tabId);
+  XA.fulfillmentService.tabRemoved(tabId).catch(() => {});
+});
+chrome.alarms.onAlarm.addListener((alarm) => XA.fulfillmentService.handleAlarm(alarm).catch(() => {}));
+XA.fulfillmentService.recoverQueues().catch(() => {});
 
 async function handleImport(msg) {
   const archive = msg.archive;
@@ -49,7 +54,14 @@ async function handleImport(msg) {
     stats: { posts: 0, seq: 0, batches: 1 },
     warnings: warnings.concat((envelope && envelope.warnings) || []),
     runtime: {},
-    imported: true
+    imported: true,
+    fulfillment: envelope && envelope.fulfillment
+      ? Object.assign({}, envelope.fulfillment, {
+        state: envelope.fulfillment.state === 'completed' ? 'completed' : 'paused',
+        currentJobId: null, workerTabId: null, workerWindowId: null, nextAt: null,
+        pauseReason: envelope.fulfillment.state === 'running' ? 'imported session is not resumed' : envelope.fulfillment.pauseReason
+      }) : null,
+    threadSummary: envelope && envelope.threadSummary || null
   };
   await XA.db.createRun(run);
   const normalized = posts.map((p) => XA.postModel.normalizePost(p, {
@@ -138,11 +150,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case M.IMPORT_ARCHIVE:
       respond(sendResponse, handleImport(msg));
       return true;
+    case M.START_FULFILL_QUEUE:
     case M.START_THREAD_QUEUE:
-      respond(sendResponse, XA.threadService.startQueue(msg));
+      respond(sendResponse, XA.fulfillmentService.startQueue(msg));
       return true;
+    case M.PAUSE_FULFILL_QUEUE:
     case M.PAUSE_THREAD_QUEUE:
-      respond(sendResponse, XA.threadService.pauseQueue(msg));
+      respond(sendResponse, XA.fulfillmentService.pauseQueue(msg));
       return true;
     case M.XAR_STATE:
       respond(sendResponse, XA.runService.handleState(msg, sender));
@@ -152,7 +166,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       respond(sendResponse, XA.runService.contentReady(msg, sender));
       return true;
     case M.XAR_THREAD_RESULT:
-      respond(sendResponse, Promise.resolve(XA.threadService.handleThreadResult(msg, sender)));
+      respond(sendResponse, XA.fulfillmentService.handleThreadResult(msg, sender));
       return true;
     case M.GET_SETTINGS:
       respond(sendResponse, XA.settings.loadSettings().then((s) => ({ ok: true, settings: s })));
@@ -167,8 +181,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case M.GET_STORAGE_USAGE:
       respond(sendResponse, XA.db.storageEstimate().then((e) => ({ ok: true, estimate: e })));
       return true;
+    case M.GET_FULFILLMENT_STATUS:
     case M.LIST_THREAD_JOBS:
-      respond(sendResponse, XA.threadService.statusFor(msg.runId).then((s) => ({ ok: true, ...s })));
+      respond(sendResponse, XA.fulfillmentService.statusFor(msg.runId, msg.refreshCandidates).then((s) => ({ ok: true, ...s })));
       return true;
     case M.REQUEST_MEDIA_PERMISSION:
       respond(sendResponse, XA.exportService.hasMediaPermission().then((has) => ({ ok: true, granted: has })));

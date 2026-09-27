@@ -109,6 +109,22 @@ describe('HTML report safety', () => {
     expect(html).toContain('1 posts');
   });
 
+  it('shows quote completion and fulfillment completion counts', () => {
+    const p = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/3',
+      quote_context: { quoted_tweet_url: 'https://x.com/b/status/4', quoted_fetched: true, quoted_text: 'full quote' }
+    });
+    const legacy = pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/5',
+      quote_context: { quoted_tweet_url: 'https://x.com/b/status/6', quoted_text_backfilled: true, quoted_text: 'legacy quote' }
+    });
+    const out = renderHtmlReport(Object.assign({}, run, {
+      fulfillment: { done: 2, incomplete: 1, failed: 1 }
+    }), [p, legacy]);
+    expect(out.match(/Quote completed/g)).toHaveLength(2);
+    expect(out).toContain('Build upon: 2 done, 1 incomplete, 1 failed');
+  });
+
   it('linkifies URLs in meta lines and run warnings', () => {
     const out = renderHtmlReport(Object.assign({}, run, {
       warnings: ['capture stopped early — see https://status.example.com/x']

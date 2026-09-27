@@ -61,6 +61,30 @@ describe('merge richness policy', () => {
     expect(merged.replying_to).toHaveLength(1);
   });
 
+  it('merges fetched quote completion without erasing richer text or media', () => {
+    const prior = pm.mergePosts(base, pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/1',
+      quote_context: {
+        quoted_text: 'This is a much longer original quote than the fetched teaser',
+        quoted_images: ['https://img/quote-1'], quoted_videos: ['https://video/1'],
+        quoted_fetched: false, quoted_fetched_at: '2024-01-01T00:00:00.000Z'
+      }
+    }));
+    const merged = pm.mergePosts(prior, pm.normalizePost({
+      tweet_url: 'https://x.com/a/status/1',
+      quote_context: {
+        quoted_text: 'teaser', quoted_images: ['https://img/quote-2'],
+        quoted_videos: ['https://video/2'], quoted_fetched: true,
+        quoted_fetched_at: '2024-02-01T00:00:00.000Z'
+      }
+    }));
+    expect(merged.quote_context.quoted_text).toBe('This is a much longer original quote than the fetched teaser');
+    expect(merged.quote_context.quoted_fetched).toBe(true);
+    expect(merged.quote_context.quoted_fetched_at).toBe('2024-02-01T00:00:00.000Z');
+    expect(merged.quote_context.quoted_images).toEqual(['https://img/quote-1', 'https://img/quote-2']);
+    expect(merged.quote_context.quoted_videos).toEqual(['https://video/1', 'https://video/2']);
+  });
+
   it('newest metrics win only when non-null', () => {
     const merged = pm.mergePosts(base, pm.normalizePost({
       tweet_url: 'https://x.com/a/status/1',
@@ -135,12 +159,16 @@ describe('JSON import', () => {
     expect(env.schemaVersion).toBe(1);
   });
 
-  it('always serializes exports as the archive envelope', () => {
-    const out = XA.exportJson.serializeJson({ id: 'r' }, [{ tweet_url: 'x' }]);
+  it('always serializes exports as the archive envelope with fulfillment metadata', () => {
+    const fulfillment = { state: 'completed', done: 3, incomplete: 1, failed: 0 };
+    const threadSummary = { total: 4, done: 3 };
+    const out = XA.exportJson.serializeJson({ id: 'r', fulfillment, threadSummary }, [{ tweet_url: 'x' }]);
     const parsed = JSON.parse(out);
     expect(Array.isArray(parsed)).toBe(false);
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.archive.id).toBe('r');
+    expect(parsed.archive.fulfillment).toEqual(fulfillment);
+    expect(parsed.archive.threadSummary).toEqual(threadSummary);
     expect(parsed.posts[0].tweet_url).toBe('x');
   });
 

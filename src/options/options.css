@@ -136,6 +136,27 @@ button:disabled { opacity: 0.45; cursor: default; }
 .jobstate.running { color: #1d9bf0; }
 .jobstate.failed, .jobstate.incomplete { color: #e8b04b; }
 .warnbox { background: #332d1a; border: 1px solid #6b5a2a; color: #e8d9a0; border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin: 10px 0; }
+.fulfillment-card { margin: 10px 0 18px; padding: 14px; border: 1px solid #31536b; border-left: 4px solid #1d9bf0; border-radius: 10px; background: #171f25; }
+.fulfillment-copy { margin: 0 0 12px; color: #b7c4ce; font-size: 13px; }
+.fulfillment-summary { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0; color: #9db2c0; font-size: 12.5px; }
+.fulfillment-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.fulfillment-controls label { display: inline-flex; align-items: center; gap: 6px; color: #c9d4dc; font-size: 13px; }
+.fulfillment-controls input[type=number], .fulfillment-controls select { width: 100px; font: inherit; color: #e7e9ea; background: #1c1f23; border: 1px solid #38444d; border-radius: 7px; padding: 5px 7px; }
+.fulfillment-controls input[type=checkbox] { width: auto; }
+.fulfillment-status { margin: 8px 0; color: #b7c4ce; font-size: 13px; }
+.fulfillment-error { color: #ff8080; font-size: 13px; }
+.fulfillment-jobs { margin-top: 12px; border-top: 1px solid #2f3336; padding-top: 9px; }
+.fulfillment-jobs > summary, .job-diagnostics summary { color: #9db2c0; cursor: pointer; font-size: 12.5px; }
+.fulfillment-job { display: grid; grid-template-columns: minmax(150px, 1fr) auto auto; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #252a2e; font-size: 12.5px; }
+.fulfillment-job a { color: #1d9bf0; overflow-wrap: anywhere; }
+.job-diagnostics { grid-column: 1 / -1; }
+.job-diagnostics pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #aab8c2; font-size: 11px; }
+@media (max-width: 760px) {
+  .arch-layout { grid-template-columns: 1fr; }
+  .arch-list { max-height: 32vh; }
+  .fulfillment-job { grid-template-columns: 1fr auto; }
+  .fulfillment-job .note { grid-column: 1 / -1; }
+}
 .run-settings summary { cursor: pointer; font-size: 13px; color: #8b98a5; margin: 8px 0 4px; }
 .run-settings pre { background: #16181c; border: 1px solid #2f3336; border-radius: 8px; padding: 10px 12px; font-size: 11.5px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 code { background: #2f3336; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
