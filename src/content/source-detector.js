@@ -72,6 +72,29 @@
           sourceUrl, supported: true, reason: null
         });
       }
+      if (segs[1] === 'history') {
+        const sub = (segs[2] || '').toLowerCase();
+        if (sub === 'likes') {
+          return makeSource({
+            key: 'history:likes', type: 'timeline', tab: 'likes',
+            label: 'Likes',
+            sourceUrl, supported: true, reason: null
+          });
+        }
+        if (!sub || sub === 'bookmarks') {
+          return makeSource({
+            key: 'bookmarks', type: 'bookmarks',
+            label: 'Bookmarks',
+            sourceUrl, supported: true, reason: null
+          });
+        }
+        const key = 'bookmarks:' + sub;
+        return makeSource({
+          key, type: 'bookmarks',
+          label: 'Bookmarks folder',
+          sourceUrl, supported: true, reason: null
+        });
+      }
       if (segs[1] === 'lists' && segs[2]) {
         return makeSource({
           key: 'list:' + segs[2].toLowerCase(), type: 'list',

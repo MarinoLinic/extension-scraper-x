@@ -18,6 +18,31 @@ describe('source detection', () => {
     expect(s.key).toBe('bookmarks:12345');
   });
 
+  it('detects bookmarks on the new /i/history page', () => {
+    const s = detect('/i/history');
+    expect(s.supported).toBe(true);
+    expect(s.type).toBe('bookmarks');
+    expect(s.key).toBe('bookmarks');
+    expect(s.label).toBe('Bookmarks');
+    expect(detect('/i/history/bookmarks').key).toBe('bookmarks');
+    expect(detect('/i/history').key).toBe(detect('/i/bookmarks').key);
+  });
+
+  it('detects the History likes tab as its own timeline', () => {
+    const s = detect('/i/history/likes');
+    expect(s.supported).toBe(true);
+    expect(s.type).toBe('timeline');
+    expect(s.key).toBe('history:likes');
+    expect(s.label).toBe('Likes');
+  });
+
+  it('detects bookmark folders under /i/history', () => {
+    const s = detect('/i/history/12345');
+    expect(s.supported).toBe(true);
+    expect(s.type).toBe('bookmarks');
+    expect(s.key).toBe('bookmarks:12345');
+  });
+
   it('detects profile posts and tabs', () => {
     const posts = detect('/Alice');
     expect(posts.supported).toBe(true);

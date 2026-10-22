@@ -15,7 +15,8 @@ or delete it.
 ## Features
 
 - **One archiver for every timeline** — profiles (Posts, Replies, Media, Likes, Highlights),
-  Bookmarks and bookmark folders, Lists, Search results, Home and other generic timelines.
+  Bookmarks (now under the History page) and bookmark folders, the History Likes tab,
+  Lists, Search results, Home and other generic timelines.
   Automatic source detection; no mode selector.
 - **Durable capture** — every batch of posts is written to extension IndexedDB *before* the
   page scrolls again. Runs survive popup closure, service-worker suspension, and tab reloads.
@@ -68,7 +69,8 @@ Open the page you want to archive while logged in to X:
 
 | Source | URL pattern |
 |---|---|
-| Bookmarks / folders | `x.com/i/bookmarks[/<folder>]` |
+| Bookmarks / folders | `x.com/i/history` (Bookmarks tab; old `x.com/i/bookmarks` still works) |
+| Likes (History) | `x.com/i/history/likes` |
 | Profile posts | `x.com/<handle>` |
 | Profile tabs | `x.com/<handle>/with_replies · /media · /likes · /highlights` |
 | List | `x.com/i/lists/<id>` |
