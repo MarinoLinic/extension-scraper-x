@@ -431,14 +431,14 @@ JavaScript only; no build step. Dev dependencies (`npm install`) are for tests/l
 npm test          # Vitest unit + DOM-fixture tests (happy-dom, fake-indexeddb)
 npm run lint      # ESLint
 npm run check     # static gate: manifest refs, no Python, no remote code
-npm run icons     # regenerate PNG icons from assets/icons/icon.svg (sharp)
+npm run icons     # regenerate PNG icons from favicon.svg (sharp)
 ```
 
 ### Project structure
 
 ```
 manifest.json            MV3 manifest (the load-unpacked root)
-assets/icons/            original SVG + PNG icons
+assets/icons/            generated SVG mirror + PNG icons
 src/
   shared/                util, messages, defaults, settings, post-model,
                          filename, export-json, export-html, media-zip
@@ -476,3 +476,7 @@ grant + ZIP + offline links + a failed image; Build upon threads, quotes, mixed 
 pacing controls; verify only one worker tab is reused serially; pause/cancel, blocked-surface
 auto-pause, service-worker restart recovery, and updated JSON/HTML downloads; overlay default
 on, media auto-ZIP default off.
+
+## Project and browser icons
+
+The project, browser toolbar and extension-management icons share [favicon.svg](favicon.svg). Run `npm run icons` after changing that file, then reload the unpacked extension from the browser's extensions page. The generated PNGs cover 16, 32, 48 and 128 pixels and are committed with the extension.

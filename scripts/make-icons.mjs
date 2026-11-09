@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const svgPath = join(root, 'assets', 'icons', 'icon.svg');
+const svgPath = join(root, 'favicon.svg');
 const svg = readFileSync(svgPath);
+writeFileSync(join(root, 'assets', 'icons', 'icon.svg'), svg);
 
 let sharp;
 try {
