@@ -1,5 +1,17 @@
 # X Archive
 
+<img src="favicon.svg" width="56" height="56" alt="X Archive project icon">
+
+![X Archive workflow diagram](docs/readme-workflow.svg)
+
+## Screenshots
+
+The empty popup and settings view use isolated example state.
+
+| Capture popup | Settings |
+| --- | --- |
+| ![Capture popup](docs/screenshots/popup.png) | ![Settings](docs/screenshots/settings.png) |
+
 A local-only **Manifest V3 Chrome extension** that archives X (Twitter) timelines to durable
 on-device storage and exports them as clean JSON and self-contained HTML reports, with an
 optional media ZIP and a user-controlled incremental archive-fulfillment phase for threads and quoted posts.
