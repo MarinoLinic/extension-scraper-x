@@ -4,6 +4,16 @@
   const u = () => XA.util;
 
   const POST_SCHEMA_VERSION = 1;
+  const MAX_QUOTE_DEPTH = 2;
+
+  function quoteChain(quote) {
+    const chain = [];
+    while (quote && typeof quote === 'object' && chain.length < MAX_QUOTE_DEPTH && !chain.includes(quote)) {
+      chain.push(quote);
+      quote = quote.quote_context;
+    }
+    return chain;
+  }
 
   function emptyPost() {
     return {
@@ -130,12 +140,14 @@
     return true;
   }
 
-  function mergeQuote(a, b) {
+  function mergeQuote(a, b, depth = 1) {
     if (!b) return a || null;
     if (!a) return b;
     const out = Object.assign({}, a);
     for (const [k, v] of Object.entries(b)) {
-      if (Array.isArray(v)) {
+      if (k === 'quote_context') {
+        if (depth < MAX_QUOTE_DEPTH) out[k] = mergeQuote(a[k], v, depth + 1);
+      } else if (Array.isArray(v)) {
         out[k] = u().dedupe([...(a[k] || []), ...v]);
       } else if (k === 'quoted_text') {
         out[k] = String(v || '').length > String(a[k] || '').length ? v : a[k];
@@ -230,7 +242,7 @@
   }
 
   XA.postModel = {
-    POST_SCHEMA_VERSION, emptyPost, canonicalPostId, normalizePost, mergePosts,
+    POST_SCHEMA_VERSION, MAX_QUOTE_DEPTH, quoteChain, emptyPost, canonicalPostId, normalizePost, mergePosts,
     postsSemanticallyEqual, postsFromImport
   };
 })();

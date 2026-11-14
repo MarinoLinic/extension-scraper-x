@@ -32,8 +32,10 @@
         if (m.type === 'image') push(post, m.url, 'post');
         if (m.type === 'video' && m.poster) push(post, m.poster, 'post');
       }
-      const q = post.quote_context;
-      if (q) for (const url of q.quoted_images || []) push(post, url, 'quote');
+      for (const q of XA.postModel.quoteChain(post.quote_context)) {
+        for (const url of q.quoted_images || []) push(post, url, 'quote');
+        if (q.quoted_avatar_url) push(post, q.quoted_avatar_url, 'avatar');
+      }
       if (post.link_card && post.link_card.image) push(post, post.link_card.image, 'card');
       if (post.avatar_url) push(post, post.avatar_url, 'avatar');
     }

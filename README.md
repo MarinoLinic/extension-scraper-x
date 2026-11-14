@@ -47,6 +47,11 @@ or delete it.
   thread and quoted-post links in one reused worker window, saving enrichments locally as they arrive.
 - **Flexible import** — accepts archive envelopes and raw post arrays, normalizing and
   deduplicating them with the same merge rules used during capture.
+- **Nested quotes** — captures two rendered quote levels, keeping each quote's author,
+  text, date, post link and media separate. Both levels survive merges, JSON/HTML
+  export and optional media ZIPs. Archive expansion can visit either quote and
+  discover a missing inner link from its immediate parent. This depends on the
+  content X renders; collapsed or unrendered quote content is not captured.
 - **Privacy by construction** — no telemetry, no servers, no remote code, minimal
   permissions (see below).
 
@@ -286,6 +291,10 @@ and `warnings`. Unavailable metrics are `null`, not `0`. Quote contexts retain t
 captured `quoted_*` fields; a fulfilled quote adds `quoted_fetched: true` and
 `quoted_fetched_at` after the exact quoted post is identified. The fetched quote is merged
 into each referring parent post's `quote_context`, not added as a top-level archive post.
+A second visible quote is stored at `quote_context.quote_context`, with the same
+`quoted_*` fields. Capture, export, media collection and expansion traversal share
+the two-level limit in `postModel.MAX_QUOTE_DEPTH`. Merging enriches each level
+without replacing its enclosing quote.
 Archive metadata includes the persisted `fulfillment` session and `threadSummary` when present;
 `schemaVersion` remains 1.
 

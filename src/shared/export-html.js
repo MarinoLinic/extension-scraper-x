@@ -127,8 +127,8 @@
     return html;
   }
 
-  function renderQuote(q, mediaMap, offline) {
-    if (!q) return '';
+  function renderQuote(q, mediaMap, offline, depth = 1) {
+    if (!q || depth > XA.postModel.MAX_QUOTE_DEPTH) return '';
     const quoteUrl = safeUrl(q.quoted_tweet_url);
     const link = quoteUrl
       ? '<a class="xa-qtime" href="' + esc(quoteUrl) + '" target="_blank" rel="noopener noreferrer">' +
@@ -147,7 +147,7 @@
       const link2 = safeUrl(v);
       if (link2) inner += '<div class="xa-videos"><a href="' + esc(link2) + '" target="_blank" rel="noopener noreferrer">Quoted video</a></div>';
     }
-    inner += '</div>';
+    inner += renderQuote(q.quote_context, mediaMap, offline, depth + 1) + '</div>';
     return inner;
   }
 
@@ -197,7 +197,8 @@
       ? '<a class="xa-time" href="' + esc(tweetUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(ts) + '</a>'
       : '<span class="xa-time">' + esc(ts) + '</span>';
     const searchText = [post.text, post.name, post.handle,
-      post.quote_context && post.quote_context.quoted_text,
+      ...XA.postModel.quoteChain(post.quote_context).flatMap((q) =>
+        [q.quoted_text, q.quoted_author_name, q.quoted_author_handle]),
       post.link_card && post.link_card.title].filter(Boolean).join(' ').toLowerCase();
 
     return '<article class="xa-card' + (post.is_thread ? ' xa-thread' : '') + '"' +

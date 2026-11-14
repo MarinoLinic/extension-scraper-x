@@ -61,8 +61,8 @@
   }
 
   function collectLinkCard(tweet, quoteBox, fallbackLinks) {
-    const card = tweet.querySelector('[data-testid="card.wrapper"]');
-    if (!card || (quoteBox && quoteBox.contains(card))) return null;
+    const card = ownNodes(tweet, '[data-testid="card.wrapper"]', quoteBox)[0];
+    if (!card) return null;
     const a = card.querySelector('a[href]');
     const img = card.querySelector('img');
     const lines = XA.util.textOf(card).split('\n').map((s) => s.trim()).filter(Boolean);
@@ -77,7 +77,7 @@
     };
   }
 
-  function collectPhotoEntries(root) {
+  function collectPhotoEntries(root, excludedQuote) {
     const entries = [];
     const seen = new Set();
     const add = (img) => {
@@ -89,17 +89,17 @@
       seen.add(upgraded);
       entries.push({ url: upgraded, type: 'image', alt: img.getAttribute('alt') || null });
     };
-    root.querySelectorAll('[data-testid="tweetPhoto"] img, img[src*="pbs.twimg.com/media/"]')
+    ownNodes(root, '[data-testid="tweetPhoto"] img, img[src*="pbs.twimg.com/media/"]', excludedQuote)
       .forEach(add);
-    root.querySelectorAll('a[href*="/photo/"]').forEach((a) => add(a.querySelector('img')));
+    ownNodes(root, 'a[href*="/photo/"]', excludedQuote).forEach((a) => add(a.querySelector('img')));
     return entries;
   }
 
-  function collectVideoEntries(root) {
+  function collectVideoEntries(root, excludedQuote) {
     const entries = [];
     const seen = new Set();
     const permalinks = [];
-    root.querySelectorAll('a[href*="/video/"]').forEach((a) => {
+    ownNodes(root, 'a[href*="/video/"]', excludedQuote).forEach((a) => {
       const p = u().absUrl(a.getAttribute('href'));
       if (p && !permalinks.includes(p)) permalinks.push(p);
     });
@@ -111,7 +111,7 @@
         permalink: permalinks[0] || null
       });
     };
-    root.querySelectorAll('video').forEach((v) => {
+    ownNodes(root, 'video', excludedQuote).forEach((v) => {
       const poster = v.getAttribute('poster');
       const src = v.currentSrc || v.getAttribute('src');
       add(src, poster);
@@ -135,19 +135,27 @@
     return !!(quoteBox && node && quoteBox.contains(node));
   }
 
+  function ownNodes(root, selector, quoteBox) {
+    return Array.from(root.querySelectorAll(selector)).filter((node) => !insideQuote(quoteBox, node));
+  }
+
   function quoteTweetUrl(quoteBox, fallback) {
-    const photo = quoteBox.querySelector(
+    const nested = findQuoteBox(quoteBox);
+    const own = (selector) => ownNodes(quoteBox, selector, nested)[0];
+    const time = own('time');
+    const timeA = time && time.closest('a');
+    if (timeA && (timeA.getAttribute('href') || '').includes('/status/')) {
+      return u().canonicalStatusUrl(timeA.getAttribute('href'));
+    }
+    const direct = quoteBox.getAttribute('href');
+    if (direct && direct.includes('/status/')) return u().canonicalStatusUrl(direct);
+    const photo = own(
       'a[href*="/status/"][href*="/photo/"], a[href*="/status/"][href*="/video/"]');
     if (photo) {
       const h = photo.getAttribute('href').split('?')[0].replace(/\/(photo|video)\/\d+$/, '');
       return u().absUrl(h);
     }
-    const time = quoteBox.querySelector('time');
-    const timeA = time && time.closest('a');
-    if (timeA && (timeA.getAttribute('href') || '').includes('/status/')) {
-      return u().absUrl(timeA.getAttribute('href'));
-    }
-    const statusA = quoteBox.querySelector('a[href*="/status/"]');
+    const statusA = own('a[href*="/status/"]');
     if (statusA) {
       const h = statusA.getAttribute('href').split('?')[0].replace(/\/(photo|video)\/\d+$/, '');
       return u().absUrl(h);
@@ -181,14 +189,16 @@
     }
   }
 
-  function extractQuote(quoteBox) {
-    const quoteUserDiv = quoteBox.querySelector('[data-testid="User-Name"]');
-    const quoteTextEl = quoteBox.querySelector('[data-testid="tweetText"]');
-    const quoteTime = quoteBox.querySelector('time');
+  function extractQuote(quoteBox, depth = 1) {
+    const nested = findQuoteBox(quoteBox);
+    const own = (selector) => ownNodes(quoteBox, selector, nested)[0];
+    const quoteUserDiv = own('[data-testid="User-Name"]');
+    const quoteTextEl = own('[data-testid="tweetText"]');
+    const quoteTime = own('time');
     let qName = null;
     let qHandle = null;
     let qProfile = null;
-    const qAvatarImg = quoteBox.querySelector('[data-testid^="UserAvatar-Container"] img');
+    const qAvatarImg = own('[data-testid^="UserAvatar-Container"] img');
     const qAvatar = qAvatarImg && qAvatarImg.src
       ? qAvatarImg.src.replace('_normal.', '_400x400.').replace('_x96.', '_400x400.') : null;
     if (quoteUserDiv) {
@@ -201,8 +211,8 @@
         qHandle = '@' + qLink.getAttribute('href').split('?')[0].replace(/^\//, '');
       }
     }
-    const photos = collectPhotoEntries(quoteBox);
-    const videos = collectVideoEntries(quoteBox);
+    const photos = collectPhotoEntries(quoteBox, nested);
+    const videos = collectVideoEntries(quoteBox, nested);
     return {
       quoted_tweet_url: quoteTweetUrl(quoteBox, null),
       quoted_author_name: qName,
@@ -213,12 +223,14 @@
       quoted_date_displayed: quoteTime ? (XA.util.textOf(quoteTime) || quoteTime.textContent) : null,
       quoted_text: quoteTextEl ? XA.util.textOf(quoteTextEl) : '',
       quoted_images: photos.map((p) => p.url),
-      quoted_videos: videos.map((v) => v.permalink || v.url)
+      quoted_videos: videos.map((v) => v.permalink || v.url),
+      ...(nested && depth < XA.postModel.MAX_QUOTE_DEPTH
+        ? { quote_context: extractQuote(nested, depth + 1) } : {})
     };
   }
 
-  function findReplyBanner(tweet) {
-    return Array.from(tweet.querySelectorAll('span')).find((span) =>
+  function findReplyBanner(tweet, quoteBox) {
+    return ownNodes(tweet, 'span', quoteBox).find((span) =>
       /^\s*Replying to\b/.test(XA.util.textOf(span))) || null;
   }
 
@@ -246,9 +258,9 @@
     [/bookmark/i, 'bookmarks']
   ];
 
-  function extractMetrics(tweet) {
+  function extractMetrics(tweet, quoteBox) {
     const metrics = { replies: null, reposts: null, likes: null, bookmarks: null, views: null };
-    const groupDiv = tweet.querySelector('div[role="group"][aria-label]');
+    const groupDiv = ownNodes(tweet, 'div[role="group"][aria-label]', quoteBox)[0];
     if (groupDiv) {
       const aria = groupDiv.getAttribute('aria-label') || '';
       const parsed = u().parseMetricsFromAria(aria);
@@ -256,7 +268,7 @@
         if (parsed[k] != null) metrics[k] = parsed[k];
       }
     }
-    for (const el of tweet.querySelectorAll('[data-testid][aria-label]')) {
+    for (const el of ownNodes(tweet, '[data-testid][aria-label]', quoteBox)) {
       const tid = el.getAttribute('data-testid') || '';
       const aria = el.getAttribute('aria-label') || '';
       for (const [pat, key] of METRIC_TESTIDS) {
@@ -271,7 +283,7 @@
       }
     }
     if (metrics.views == null) {
-      const viewEl = tweet.querySelector('a[href*="/analytics"], a[aria-label*="View"]');
+      const viewEl = ownNodes(tweet, 'a[href*="/analytics"], a[aria-label*="View"]', quoteBox)[0];
       if (viewEl) {
         const m = (viewEl.getAttribute('aria-label') || XA.util.textOf(viewEl) || '')
           .match(/(\d[\d,.]*)\s*([KkMmBb])?/);
@@ -307,13 +319,13 @@
   }
 
   function articleHandle(tweet) {
-    const link = tweet.querySelector('[data-testid="User-Name"] a[href^="/"]');
+    const link = ownNodes(tweet, '[data-testid="User-Name"] a[href^="/"]', findQuoteBox(tweet))[0];
     if (!link) return null;
     return link.getAttribute('href').split('?')[0].replace(/^\//, '') || null;
   }
 
   function articleTimestamp(tweet) {
-    const t = tweet.querySelector('time');
+    const t = ownNodes(tweet, 'time', findQuoteBox(tweet))[0];
     const dt = t && t.getAttribute('datetime');
     const ms = dt ? Date.parse(dt) : NaN;
     return Number.isNaN(ms) ? null : ms;
@@ -323,27 +335,28 @@
     const c = ctx || {};
     const warnings = [];
 
-    const timeElement = article.querySelector('time');
+    const quoteBox = findQuoteBox(article);
+    const own = (selector) => ownNodes(article, selector, quoteBox)[0];
+    const timeElement = own('time');
     const timeAnchor = timeElement ? timeElement.closest('a') : null;
     let href = timeAnchor && timeAnchor.getAttribute('href');
     if ((!href || !href.includes('/status/')) && timeElement && c.allowFocusedRoot && c.conversationUrl) {
       href = c.conversationUrl;
     }
     if (!href || !href.includes('/status/')) {
-      const anyStatus = article.querySelector('a[href*="/status/"]');
+      const anyStatus = own('a[href*="/status/"]');
       if (anyStatus && timeElement) href = anyStatus.getAttribute('href');
     }
     if (!href || !href.includes('/status/')) return null;
     const tweetUrl = u().canonicalStatusUrl(href);
 
-    const quoteBox = findQuoteBox(article);
     const post = XA.postModel.normalizePost({ tweet_url: tweetUrl }, {
       captureContext: c.captureContext || 'timeline',
       sourceKey: c.sourceKey,
       sourceType: c.sourceType
     });
 
-    const userNameDiv = article.querySelector('[data-testid="User-Name"]');
+    const userNameDiv = own('[data-testid="User-Name"]');
     if (userNameDiv) {
       const userLink = userNameDiv.querySelector('a[href^="/"]');
       post.name = (userLink && XA.util.textOf(userLink).trim()) ||
@@ -354,11 +367,11 @@
         post.profile_url = 'https://x.com' + rawHref;
       }
     }
-    const avatarImg = article.querySelector('[data-testid="Tweet-User-Avatar"] img');
+    const avatarImg = own('[data-testid="Tweet-User-Avatar"] img');
     if (avatarImg && avatarImg.src && !avatarImg.src.includes('emoji')) {
       post.avatar_url = avatarImg.src.replace('_normal.', '_400x400.').replace('_x96.', '_400x400.');
     }
-    const social = article.querySelector('[data-testid="socialContext"]');
+    const social = own('[data-testid="socialContext"]');
     post.social_context = social ? XA.util.textOf(social).trim() : null;
 
     if (timeElement) {
@@ -366,7 +379,7 @@
       post.date_displayed = XA.util.textOf(timeElement) || timeElement.textContent;
     }
 
-    const replySpan = findReplyBanner(article);
+    const replySpan = findReplyBanner(article, quoteBox);
     post.replying_to = extractReplyingTo(replySpan);
     post.is_reply = post.replying_to.length > 0 || !!replySpan;
 
@@ -394,14 +407,10 @@
     }
     post.link_card = collectLinkCard(article, quoteBox, post.links);
 
-    const quoteImgUrls = quoteBox
-      ? new Set(collectPhotoEntries(quoteBox).map((p) => p.url)) : new Set();
-    const photos = collectPhotoEntries(article).filter((p) => !quoteImgUrls.has(p.url));
+    const photos = collectPhotoEntries(article, quoteBox);
     post.images = photos.map((p) => p.url);
 
-    const videos = collectVideoEntries(article).filter((v) =>
-      !quoteBox || !quoteBox.querySelector('video, a[href*="/video/"]') ||
-      !insideQuote(quoteBox, findVideoNode(article, v)));
+    const videos = collectVideoEntries(article, quoteBox);
     post.videos = videos.map((v) => v.permalink || v.url);
     post.media = [
       ...photos.map((p) => ({ url: p.url, type: 'image', alt: p.alt })),
@@ -420,8 +429,8 @@
       }
     }
 
-    post.metrics = extractMetrics(article);
-    if (!article.querySelector('div[role="group"][aria-label]')) {
+    post.metrics = extractMetrics(article, quoteBox);
+    if (!own('div[role="group"][aria-label]')) {
       warnings.push('metrics-unavailable: engagement counters not rendered');
     }
 
@@ -438,13 +447,6 @@
 
     post.warnings = warnings;
     return post;
-  }
-
-  function findVideoNode(article, v) {
-    for (const video of article.querySelectorAll('video')) {
-      if (video.currentSrc === v.url || video.getAttribute('src') === v.url) return video;
-    }
-    return null;
   }
 
   function threadCandidatesFor(post, ctx, counter) {
@@ -567,7 +569,7 @@
   }
 
   function postUrlFor(el) {
-    const t = el.querySelector('time');
+    const t = ownNodes(el, 'time', findQuoteBox(el))[0];
     const a = t && t.closest('a');
     const href = a && a.getAttribute('href');
     return href && href.includes('/status/') ? u().canonicalStatusUrl(href) : null;

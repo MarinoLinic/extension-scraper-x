@@ -18,8 +18,8 @@
   const missingQuoteUrlCounts = new Map();
   let starting = false;
 
-  function jobId(runId, statusId, kind, mode, parentPostId) {
-    if (mode === 'quote_discovery') return runId + ':quote-source:' + parentPostId;
+  function jobId(runId, statusId, kind, mode) {
+    if (mode === 'quote_discovery') return runId + ':quote-source:' + statusId;
     return kind === 'quote'
       ? runId + ':quote:' + statusId
       : runId + ':' + statusId;
@@ -48,9 +48,8 @@
 
   function makeCandidate(runId, kind, statusId, url, meta, order) {
     const mode = meta.mode || kind;
-    const parentPostId = (meta.parentPostIds || [])[0];
     return {
-      id: jobId(runId, statusId, kind, mode, parentPostId), runId, kind, mode, statusId,
+      id: jobId(runId, statusId, kind, mode), runId, kind, mode, statusId,
       url: safeStatusUrl(url),
       authorHandle: meta.authorHandle || authorForUrl(url, meta.fallbackHandle || null),
       parentPostIds: meta.parentPostIds || [],
@@ -66,7 +65,9 @@
   function countMissingQuoteUrls(posts) {
     let count = 0;
     for (const post of posts || []) {
-      if (post.quote_context && !safeStatusUrl(post.quote_context.quoted_tweet_url)) count++;
+      for (const quote of XA.postModel.quoteChain(post.quote_context)) {
+        if (!safeStatusUrl(quote.quoted_tweet_url)) count++;
+      }
     }
     return count;
   }
@@ -165,9 +166,8 @@
     let order = 0;
     const add = (kind, statusId, url, meta) => {
       const mode = meta.mode || kind;
-      const parentPostId = (meta.parentPostIds || [])[0];
       const key = mode === 'quote_discovery'
-        ? 'quote_discovery:' + parentPostId
+        ? 'quote_discovery:' + statusId
         : kind + ':' + statusId;
       const prev = candidates.get(key);
       if (!prev) {
@@ -217,8 +217,11 @@
         });
       }
 
-      const quote = post.quote_context;
-      if (quote) {
+      let quoteParentUrl = post.tweet_url;
+      let quoteParentHandle = post.handle;
+      let quoteParentTimestamp = post.timestamp_iso;
+      let quoteParentText = post.text;
+      for (const quote of XA.postModel.quoteChain(post.quote_context)) {
         const quoteUrl = safeStatusUrl(quote.quoted_tweet_url);
         const quoteId = XA.util.statusIdFromUrl(quoteUrl);
         if (quoteUrl && quoteId) {
@@ -231,19 +234,23 @@
             alreadyFulfilled: !!(quote.quoted_fetched || quote.quoted_text_backfilled)
           });
         } else {
-          const parentUrl = safeStatusUrl(post.tweet_url);
+          const parentUrl = safeStatusUrl(quoteParentUrl);
           const parentId = XA.util.statusIdFromUrl(parentUrl);
           if (parentUrl && parentId) {
             add('quote', parentId, parentUrl, {
               mode: 'quote_discovery',
               reasons: ['quote-discovery'], confidence: 'medium',
               parentPostIds: [post.id], fallbackHandle: null,
-              authorHandle: String(post.handle || '').replace(/^@/, '') || null,
-              expectedTimestamp: post.timestamp_iso || null,
-              expectedText: post.text || '', alreadyFulfilled: false
+              authorHandle: String(quoteParentHandle || '').replace(/^@/, '') || null,
+              expectedTimestamp: quoteParentTimestamp || null,
+              expectedText: quoteParentText || '', alreadyFulfilled: false
             });
           }
         }
+        quoteParentUrl = quote.quoted_tweet_url;
+        quoteParentHandle = quote.quoted_author_handle;
+        quoteParentTimestamp = quote.quoted_timestamp_iso;
+        quoteParentText = quote.quoted_text;
       }
       order++;
     }
@@ -786,9 +793,23 @@
       quoted_text: post.text,
       quoted_images: post.images || [],
       quoted_videos: post.videos || [],
+      quote_context: post.quote_context || null,
       quoted_fetched: true,
       quoted_fetched_at: XA.util.nowIso()
     };
+  }
+
+  function quoteUpdateFor(parent, job, replacement, discovery = false) {
+    if (discovery && parent.id === job.statusId) return replacement;
+    function visit(quote, depth) {
+      if (!quote || depth > XA.postModel.MAX_QUOTE_DEPTH) return null;
+      if (XA.util.statusIdFromUrl(quote.quoted_tweet_url) === job.statusId) {
+        return discovery ? Object.assign({}, quote, { quote_context: replacement }) : replacement;
+      }
+      const child = visit(quote.quote_context, depth + 1);
+      return child ? Object.assign({}, quote, { quote_context: child }) : null;
+    }
+    return visit(parent.quote_context, 1);
   }
 
   async function persistQuoteResult(runId, job, result, diag) {
@@ -808,9 +829,11 @@
     for (const parentId of job.parentPostIds || []) {
       const parent = byId.get(parentId);
       if (!parent || !parent.tweet_url) continue;
+      const quoteUpdate = quoteUpdateFor(parent, job, fetched);
+      if (!quoteUpdate) continue;
       const sparse = XA.postModel.normalizePost({
         tweet_url: parent.tweet_url,
-        quote_context: fetched
+        quote_context: quoteUpdate
       }, {
         captureContext: parent.capture_context,
         sourceKey: parent.source_key,
@@ -851,9 +874,11 @@
     for (const parentId of job.parentPostIds || []) {
       const parent = byId.get(parentId);
       if (!parent || !parent.tweet_url) continue;
+      const quoteUpdate = quoteUpdateFor(parent, job, discovered, true);
+      if (!quoteUpdate) continue;
       updates.push(XA.postModel.normalizePost({
         tweet_url: parent.tweet_url,
-        quote_context: discovered
+        quote_context: quoteUpdate
       }, {
         captureContext: parent.capture_context,
         sourceKey: parent.source_key,
